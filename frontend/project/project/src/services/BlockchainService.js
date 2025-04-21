@@ -1,51 +1,41 @@
 import Web3 from 'web3';
-import TransactionContract from '../contracts/Transaction.json';
+import { ethers } from 'ethers';
+import config from '../../config.js'; // Updated path to config file
 
 class BlockchainService {
   constructor() {
-    this.web3 = null;
+    // Initialize with null values - will connect directly when needed
+    this.provider = null;
+    this.wallet = null;
     this.contract = null;
-    this.account = null;
   }
 
   async init() {
-    if (window.ethereum) {
-      try {
-        // Request account access
-        await window.ethereum.request({ method: 'eth_requestAccounts' });
-        this.web3 = new Web3(window.ethereum);
-        
-        // Get the first account
-        const accounts = await this.web3.eth.getAccounts();
-        this.account = accounts[0];
-
-        // Try to get the network ID and contract
-        try {
-          const networkId = await this.web3.eth.net.getId();
-          const deployedNetwork = TransactionContract.networks[networkId];
-          if (deployedNetwork) {
-            this.contract = new this.web3.eth.Contract(
-              TransactionContract.abi,
-              deployedNetwork.address
-            );
-          }
-        } catch (error) {
-          console.warn('Contract not deployed yet:', error);
-        }
-
-        return true;
-      } catch (error) {
-        console.error('Error initializing blockchain service:', error);
-        return false;
-      }
-    } else {
-      console.error('Please install MetaMask!');
+    try {
+      // Connect directly to the Hardhat node without using MetaMask
+      this.provider = new ethers.JsonRpcProvider('http://localhost:8545');
+      
+      // Use a default private key (ONLY FOR DEVELOPMENT)
+      const HARDHAT_DEV_PRIVATE_KEY = '0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80';
+      this.wallet = new ethers.Wallet(HARDHAT_DEV_PRIVATE_KEY, this.provider);
+      
+      // Initialize contract with direct RPC connection
+      this.contract = new ethers.Contract(
+        config.contract.address,
+        config.contract.abi,
+        this.wallet
+      );
+      
+      console.log('Connected directly to local blockchain node');
+      return true;
+    } catch (error) {
+      console.error('Error initializing direct blockchain connection:', error);
       return false;
     }
   }
 
   async logTransactionToBlockchain(transactionData, mlPredictions) {
-    if (!this.web3 || !this.account) {
+    if (!this.contract) {
       throw new Error('Blockchain service not initialized');
     }
 
@@ -60,26 +50,18 @@ class BlockchainService {
         confidence: mlPredictions.confidence
       });
 
-      if (this.contract) {
-        // Only log to blockchain if it's a fraudulent transaction or high confidence
-        if (mlPredictions.isFraud || mlPredictions.confidence > 70) {
-          await this.contract.methods.logTransaction(
-            transactionId,
-            this.web3.utils.toWei(transactionData.amount.toString(), 'ether'),
-            transactionData.recipient,
-            mlPredictions.isFraud,
-            Math.floor(mlPredictions.confidence),
-            mlDetails
-          ).send({ from: this.account });
+      // Only log to blockchain if it's a fraudulent transaction or high confidence
+      if (mlPredictions.isFraud || mlPredictions.confidence > 70) {
+        await this.contract.logTransaction(
+          transactionId,
+          transactionData.amount,
+          transactionData.recipient,
+          mlPredictions.isFraud,
+          Math.floor(mlPredictions.confidence),
+          mlDetails
+        );
 
-          console.log('Transaction logged to blockchain:', {
-            transactionId,
-            ...transactionData,
-            mlPredictions
-          });
-        }
-      } else {
-        console.log('Contract not available, would have logged:', {
+        console.log('Transaction logged to blockchain:', {
           transactionId,
           ...transactionData,
           mlPredictions
@@ -94,15 +76,15 @@ class BlockchainService {
   }
 
   async getFraudulentTransactions() {
-    if (!this.web3 || !this.contract) {
+    if (!this.contract) {
       return [];
     }
 
     try {
-      const transactions = await this.contract.methods.getFraudulentTransactions().call();
+      const transactions = await this.contract.getFraudulentTransactions();
       return transactions.map(tx => ({
         transactionId: tx.transactionId,
-        amount: this.web3.utils.fromWei(tx.amount, 'ether'),
+        amount: tx.amount,
         recipient: tx.recipient,
         timestamp: new Date(tx.timestamp * 1000),
         isFraud: tx.isFraud,
@@ -119,7 +101,15 @@ class BlockchainService {
     if (window.ethereum) {
       try {
         await window.ethereum.request({ method: 'eth_requestAccounts' });
-        const web3 = new Web3(window.ethereum);
+        
+        // Configure Web3 to disable ENS features for local network
+        const providerOptions = {
+          chainId: 31337, 
+          name: "local",
+          ensAddress: null
+        };
+        const web3 = new Web3(window.ethereum, null, providerOptions);
+        
         const networkId = await web3.eth.net.getId();
         const deployedNetwork = TransactionContract.networks[networkId];
         const contract = new web3.eth.Contract(

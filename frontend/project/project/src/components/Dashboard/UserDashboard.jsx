@@ -1,7 +1,7 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useAuth } from "../../contexts/AuthContext";
 import { useNavigate } from "react-router-dom";
-import { Wallet, Settings, LogOut, History, Shield, AlertTriangle, CheckCircle, Activity, Clock, TrendingUp, AlertOctagon, Save } from "lucide-react";
+import { Wallet, Settings, LogOut, History, Shield, AlertTriangle, CheckCircle, Activity, Clock, TrendingUp, AlertOctagon, Save, Anchor } from "lucide-react";
 import axios from "axios";
 
 const UserDashboard = () => {
@@ -13,12 +13,14 @@ const UserDashboard = () => {
   const [recipientAddress, setRecipientAddress] = useState("");
   const [error, setError] = useState(null);
   const [saveStatus, setSaveStatus] = useState({ loading: false, error: null, success: false });
+  const [blockchainStatus, setBlockchainStatus] = useState({ loading: false, error: null, success: false, txHash: null });
 
   const handlePrediction = async () => {
     setLoading(true);
     setError(null);
     setPrediction(null);
     setSaveStatus({ loading: false, error: null, success: false });
+    setBlockchainStatus({ loading: false, error: null, success: false, txHash: null });
     
     try {
       const response = await axios.post('http://localhost:4000/api/predict', {
@@ -67,6 +69,50 @@ const UserDashboard = () => {
     } catch (error) {
       console.error("Error saving transaction:", error);
       setSaveStatus({ loading: false, error: error.response?.data?.error || "An error occurred while saving.", success: false });
+    } 
+  };
+
+  const handleLogToBlockchain = async () => {
+    if (!prediction || !user) { 
+      console.error("Cannot log to chain: Missing prediction data or user not logged in.");
+      setBlockchainStatus({ loading: false, error: "Cannot log transaction data.", success: false, txHash: null });
+      return;
+    } 
+
+    setBlockchainStatus({ loading: true, error: null, success: false, txHash: null });
+
+    try {
+      const payload = {
+        supabaseUserId: user.id,
+        amount: parseFloat(amount), 
+        recipientAddress: recipientAddress
+      };
+
+      const response = await axios.post('http://localhost:4000/api/transactions', payload);
+
+      if (response.data.success) {
+        setBlockchainStatus({ 
+          loading: false, 
+          error: null, 
+          success: true, 
+          txHash: response.data.blockchainHash 
+        });
+      } else {
+        setBlockchainStatus({ 
+          loading: false, 
+          error: response.data.error || "Failed to log transaction on blockchain", 
+          success: false, 
+          txHash: null 
+        });
+      }
+    } catch (error) {
+      console.error("Error logging transaction to blockchain:", error);
+      setBlockchainStatus({ 
+        loading: false, 
+        error: error.response?.data?.error || "An error occurred while logging to blockchain.", 
+        success: false, 
+        txHash: null 
+      });
     } 
   };
 
@@ -248,10 +294,10 @@ const UserDashboard = () => {
                           <button 
                             onClick={handleSaveTransaction}
                             disabled={saveStatus.loading || !user}
-                            className="w-full flex items-center justify-center space-x-2 bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-lg transition-colors disabled:opacity-50"
+                            className="w-full flex items-center justify-center space-x-2 bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-lg transition-colors disabled:opacity-50 mb-3"
                           >
                             <Save className="h-5 w-5" />
-                            <span>{saveStatus.loading ? 'Saving...' : 'Save Transaction to History'}</span>
+                            <span>{saveStatus.loading ? 'Saving...' : 'Save Transaction to DB History'}</span>
                           </button>
                           {saveStatus.error && (
                             <p className="text-red-400 text-sm mt-2 text-center">Error: {saveStatus.error}</p>
@@ -259,9 +305,36 @@ const UserDashboard = () => {
                         </div>
                       )}
                       {saveStatus.success && (
-                         <div className="mt-6 bg-green-900/50 border border-green-500 p-4 rounded-lg flex items-center justify-center space-x-2">
+                         <div className="mt-6 mb-3 bg-green-900/50 border border-green-500 p-4 rounded-lg flex items-center justify-center space-x-2">
                            <CheckCircle className="h-5 w-5 text-green-500" />
-                           <p className="text-green-200">Transaction saved successfully!</p>
+                           <p className="text-green-200">Transaction saved to DB successfully!</p>
+                         </div>
+                      )}
+
+                      {!blockchainStatus.success && (
+                        <div className="mt-2">
+                          <button 
+                            onClick={handleLogToBlockchain}
+                            disabled={blockchainStatus.loading || !user || !prediction}
+                            className="w-full flex items-center justify-center space-x-2 bg-purple-600 hover:bg-purple-700 text-white py-3 rounded-lg transition-colors disabled:opacity-50"
+                          >
+                            <Anchor className="h-5 w-5" />
+                            <span>{blockchainStatus.loading ? 'Logging to Blockchain...' : 'Log Transaction On-Chain'}</span>
+                          </button>
+                          {blockchainStatus.error && (
+                            <p className="text-red-400 text-sm mt-2 text-center">Error: {blockchainStatus.error}</p>
+                          )}
+                        </div>
+                      )}
+                      {blockchainStatus.success && (
+                         <div className="mt-2 bg-green-900/50 border border-green-500 p-4 rounded-lg flex items-center justify-center space-x-2">
+                           <CheckCircle className="h-5 w-5 text-green-500" />
+                           <div>
+                             <p className="text-green-200">Transaction logged on blockchain!</p>
+                             {blockchainStatus.txHash && (
+                               <p className="text-xs text-gray-400 mt-1">Tx Hash: <span className="font-mono break-all">{blockchainStatus.txHash}</span></p>
+                             )}
+                           </div>
                          </div>
                       )}
                     </div>
@@ -293,7 +366,14 @@ const UserDashboard = () => {
                     className="w-full flex items-center space-x-2 px-4 py-2 rounded-lg hover:bg-gray-800 transition-colors text-white"
                   >
                     <History className="h-5 w-5" />
-                    <span>Transaction History</span>
+                    <span>DB Transaction History</span>
+                  </button>
+                  <button 
+                    onClick={() => navigate('/blockchain-history')}
+                    className="w-full flex items-center space-x-2 px-4 py-2 rounded-lg hover:bg-gray-800 transition-colors text-white"
+                  >
+                    <Anchor className="h-5 w-5" />
+                    <span>Blockchain Transaction Log</span>
                   </button>
                   <button 
                     onClick={() => navigate('/security-settings')}

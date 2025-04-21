@@ -1,3 +1,4 @@
+// Frontend configuration for blockchain connection
 const config = {
     // Network configuration
     network: {
@@ -7,7 +8,7 @@ const config = {
     
     // Contract configuration
     contract: {
-        address: "0x9fE4673667d2D9a65f0992f2272dE9f3c7fa6e0", // Newly deployed contract address
+        address: "0x9fE4673667d2D9a65f0992f2272dE9f3c7fa6e0", // Your deployed contract address
         abi: [
             {
                 "inputs": [],
@@ -154,4 +155,4 @@ const config = {
     }
 };
 
-module.exports = config; 
+export default config; 

@@ -6,6 +6,7 @@ const multer = require("multer");
 const path = require("path");
 const cors = require("cors");
 const axios = require("axios");
+const { ethers } = require("ethers");
 const blockchainService = require("./services/blockchainService");
 const Transaction = require("./models/Transaction");
 require('dotenv').config();
@@ -362,7 +363,12 @@ function calculateHistoricalRisk(recentTransactions) {
 // Update the transaction route to use smart contract
 app.post("/api/transactions", async (req, res) => {
     try {
-        const { amount, recipientAddress, userId } = req.body;
+        // Expect supabaseUserId from the frontend for this specific action
+        const { amount, recipientAddress, supabaseUserId } = req.body;
+
+        if (!supabaseUserId) {
+           return res.status(400).json({ success: false, error: 'supabaseUserId is required in the request body' });
+        }
 
         // Get risk assessment from ML service
         const mlResponse = await axios.post("http://localhost:8000/predict", {
@@ -370,45 +376,70 @@ app.post("/api/transactions", async (req, res) => {
             recipientAddress
         });
 
-        const { riskLevel } = mlResponse.data;
+        // Extract all necessary details from ML response
+        const { 
+            riskLevel, 
+            confidence, 
+            transactionCategory, 
+            riskFactors, 
+            securitySuggestions,
+            analysisMetrics 
+        } = mlResponse.data;
 
         // Validate transaction on blockchain
         const blockchainResult = await blockchainService.validateTransaction(
             amount,
             recipientAddress,
-            riskLevel,
-            process.env.PRIVATE_KEY // Store this securely in environment variables
+            riskLevel, // Pass riskLevel to the contract
+            process.env.PRIVATE_KEY 
         );
 
         if (!blockchainResult.success) {
             return res.status(400).json({
                 success: false,
-                error: "Transaction validation failed on blockchain"
+                error: blockchainResult.error || "Transaction validation failed on blockchain"
             });
         }
 
-        // Save to MongoDB
-        const transaction = new Transaction({
-            userId,
+        // Save to MongoDB (using correct fields for Transaction model)
+        const transactionRecord = new Transaction({
+            supabaseUserId, // Use ID from request
             amount,
             recipientAddress,
             riskLevel,
-            blockchainHash: blockchainResult.transactionHash,
+            confidence, // Add confidence
+            transactionCategory, // Add category
+            riskFactors, // Add factors
+            securitySuggestions, // Add suggestions
+            analysisMetrics, // Add metrics
+            // Add the blockchain hash if you want it in this record too
+            // blockchainHash: blockchainResult.transactionHash, 
             timestamp: new Date()
         });
 
-        await transaction.save();
+        await transactionRecord.save();
 
         res.json({
             success: true,
-            transaction,
+            message: "Transaction logged to blockchain and saved to DB", // Updated message
+            transaction: transactionRecord, // Return the saved DB record
             blockchainHash: blockchainResult.transactionHash
         });
     } catch (error) {
+        // Handle potential errors from ML call, blockchain call, or DB save
         console.error("Error processing transaction:", error);
+        // Send back specific Mongoose validation errors if they exist
+        if (error.name === 'ValidationError') {
+            return res.status(400).json({ success: false, error: "Database validation failed", details: error.errors });
+        }
+        // Send back blockchain error if it exists
+        if (error.message.includes("blockchain")) {
+             return res.status(400).json({ success: false, error: error.message });
+        }
+        // Generic error
         res.status(500).json({
             success: false,
-            error: "Error processing transaction"
+            error: error.message || "Error processing transaction"
         });
     }
 });
@@ -503,13 +534,54 @@ app.get('/api/transactions/history', async (req, res) => {
   }
 });
 
-// Existing /api/blockchain/history endpoint 
+// Updated /api/blockchain/history endpoint 
 app.get('/api/blockchain/history', fetchuser, async (req, res) => {
   console.log("Fetching blockchain history for user:", req.user.id); 
-  // Assuming the original implementation was here 
-  // If this endpoint wasn't fully implemented, we might need to add placeholder logic
-  // For now, just adding a basic response if nothing was here before
-  res.status(501).json({ success: false, error: 'Blockchain history endpoint not fully implemented' }); 
+  try {
+    // Get wallet address from private key - this is where transactions are recorded
+    const privateKey = process.env.PRIVATE_KEY;
+    if (!privateKey) {
+      return res.status(500).json({ success: false, error: 'Private key not configured on backend.' });
+    }
+    const wallet = new ethers.Wallet(privateKey);
+    
+    // Using the wallet address to get transaction history from the blockchain
+    const result = await blockchainService.getTransactionHistory(wallet.address);
+    
+    if (!result.success) {
+      return res.status(400).json({
+        success: false,
+        error: result.error || "Error fetching blockchain transaction history"
+      });
+    }
+    
+    res.json({
+      success: true,
+      transactions: result.transactions,
+      address: wallet.address
+    });
+  } catch (error) {
+    console.error("Error fetching blockchain history:", error);
+    res.status(500).json({ 
+      success: false, 
+      error: error.message || 'Error fetching blockchain history' 
+    }); 
+  }
+});
+
+// Endpoint to get the public address of the backend wallet
+app.get('/api/blockchain/wallet-address', (req, res) => {
+  try {
+    const privateKey = process.env.PRIVATE_KEY;
+    if (!privateKey) {
+      return res.status(500).json({ success: false, error: 'Private key not configured on backend.' });
+    }
+    const wallet = new ethers.Wallet(privateKey);
+    res.json({ success: true, address: wallet.address });
+  } catch (e) { 
+    console.error("Error deriving wallet address:", e);
+    res.status(500).json({ success: false, error: 'Could not derive wallet address from backend key.' }); 
+  }
 });
 
 // Starting Express Server

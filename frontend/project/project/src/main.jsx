@@ -9,6 +9,7 @@ import Contact from './pages/Contact.jsx';
 import { AuthProvider } from './contexts/AuthContext.jsx';
 import UserDashboard from './components/Dashboard/UserDashboard';
 import TransactionHistory from './components/Dashboard/TransactionHistory';
+import BlockchainHistory from './components/Dashboard/BlockchainHistory';
 import ProtectedRoute from './components/Auth/ProtectedRoute';
 import './index.css';
 
@@ -35,6 +36,14 @@ createRoot(document.getElementById('root')).render(
             element={
               <ProtectedRoute>
                 <TransactionHistory />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/blockchain-history"
+            element={
+              <ProtectedRoute>
+                <BlockchainHistory />
               </ProtectedRoute>
             }
           />
