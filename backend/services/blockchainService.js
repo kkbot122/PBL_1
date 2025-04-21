@@ -3,7 +3,7 @@ const config = require('../../smart_contracts/config');
 
 class BlockchainService {
     constructor() {
-        this.provider = new ethers.providers.JsonRpcProvider(config.network.rpcUrl);
+        this.provider = new ethers.JsonRpcProvider(config.network.rpcUrl);
         this.contract = new ethers.Contract(
             config.contract.address,
             config.contract.abi,
@@ -21,7 +21,7 @@ class BlockchainService {
             
             // Call validateTransaction function
             const tx = await contractWithSigner.validateTransaction(
-                ethers.utils.parseEther(amount.toString()),
+                ethers.parseEther(amount.toString()),
                 recipientAddress,
                 riskLevel
             );
@@ -50,7 +50,7 @@ class BlockchainService {
             for (let i = 0; i < count; i++) {
                 const tx = await this.contract.getTransaction(userAddress, i);
                 transactions.push({
-                    amount: ethers.utils.formatEther(tx.amount),
+                    amount: ethers.formatEther(tx.amount),
                     recipientAddress: tx.recipientAddress,
                     timestamp: new Date(tx.timestamp * 1000),
                     isVerified: tx.isVerified,

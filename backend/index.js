@@ -7,6 +7,7 @@ const path = require("path");
 const cors = require("cors");
 const axios = require("axios");
 const blockchainService = require("./services/blockchainService");
+const Transaction = require("./models/Transaction");
 require('dotenv').config();
 const port = process.env.PORT || 4000;
 
@@ -110,28 +111,35 @@ app.get("/", (req, res) => {
 
 // Create an endpoint at ip/login for login the user and giving auth-token
 app.post('/login', async (req, res) => {
-  console.log("Login");
+  console.log("Login Attempt for:", req.body.email);
   let success = false;
-  let user = await Users.findOne({ email: req.body.email });
-  if (user) {
-    const passCompare = req.body.password === user.password;
-    if (passCompare) {
-      const data = {
-        user: {
-          id: user.id
+  try {
+    let user = await Users.findOne({ email: req.body.email });
+    if (user) {
+      // Revert to plain text password comparison
+      const passCompare = req.body.password === user.password;
+
+      if (passCompare) {
+        const data = {
+          user: {
+            id: user.id
+          }
         }
+        success = true;
+        console.log("Login Successful for:", user.email, "ID:", user.id);
+        const token = jwt.sign(data, 'secret_ecom');
+        res.json({ success, token });
+      } else {
+        console.log("Password comparison failed for:", req.body.email);
+        return res.status(400).json({ success: false, errors: "please try with correct email/password" });
       }
-      success = true;
-      console.log(user.id);
-      const token = jwt.sign(data, 'secret_ecom');
-      res.json({ success, token });
+    } else {
+      console.log("User not found:", req.body.email);
+      return res.status(400).json({ success: false, errors: "please try with correct email/password" });
     }
-    else {
-      return res.status(400).json({ success: success, errors: "please try with correct email/password" })
-    }
-  }
-  else {
-    return res.status(400).json({ success: success, errors: "please try with correct email/password" })
+  } catch (error) {
+      console.error("Login Error:", error);
+      res.status(500).json({ success: false, errors: "Server error during login." });
   }
 })
 
@@ -140,30 +148,40 @@ app.post('/login', async (req, res) => {
 app.post('/signup', async (req, res) => {
   console.log("Sign Up");
   let success = false;
-  let check = await Users.findOne({ email: req.body.email });
-  if (check) {
-    return res.status(400).json({ success: success, errors: "existing user found with this email" });
-  }
-  let cart = {};
-  for (let i = 0; i < 300; i++) {
-    cart[i] = 0;
-  }
-  const user = new Users({
-    name: req.body.username,
-    email: req.body.email,
-    password: req.body.password,
-    cartData: cart,
-  });
-  await user.save();
-  const data = {
-    user: {
-      id: user.id
+  try {
+    let check = await Users.findOne({ email: req.body.email });
+    if (check) {
+      return res.status(400).json({ success: false, errors: "existing user found with this email" });
     }
-  }
+    let cart = {};
+    for (let i = 0; i < 300; i++) {
+      cart[i] = 0;
+    }
 
-  const token = jwt.sign(data, 'secret_ecom');
-  success = true;
-  res.json({ success, token })
+    // Remove password hashing
+    // const salt = await bcrypt.genSalt(10);
+    // const hashedPassword = await bcrypt.hash(req.body.password, salt);
+
+    const user = new Users({
+      name: req.body.username,
+      email: req.body.email,
+      password: req.body.password, // Save plain text password
+      cartData: cart,
+    });
+    await user.save();
+    const data = {
+      user: {
+        id: user.id
+      }
+    }
+
+    const token = jwt.sign(data, 'secret_ecom');
+    success = true;
+    res.json({ success, token })
+  } catch (error) {
+    console.error("Signup Error:", error);
+    res.status(500).json({ success: false, errors: "Failed to create user." });
+  }
 })
 
 
@@ -419,6 +437,79 @@ app.get("/api/transactions/history/:userAddress", async (req, res) => {
             error: "Error fetching transaction history"
         });
     }
+});
+
+// Endpoint to Save Transaction History (Supabase Auth)
+app.post('/api/transactions/save', async (req, res) => {
+  try {
+    const { 
+      supabaseUserId, // Expecting this from frontend
+      amount, 
+      recipientAddress, 
+      riskLevel, 
+      confidence, 
+      transactionCategory, 
+      riskFactors, 
+      securitySuggestions,
+      analysisMetrics // Added analysis metrics
+    } = req.body;
+
+    // Basic validation
+    if (!supabaseUserId || !amount || !recipientAddress || !riskLevel || !confidence) {
+      return res.status(400).json({ success: false, error: 'Missing required transaction fields (including supabaseUserId)' });
+    }
+
+    const transaction = new Transaction({
+      supabaseUserId,
+      amount,
+      recipientAddress,
+      riskLevel,
+      confidence,
+      transactionCategory,
+      riskFactors,
+      securitySuggestions,
+      analysisMetrics
+      // Timestamp is added by default
+    });
+
+    await transaction.save();
+    
+    console.log("Transaction saved for Supabase User:", supabaseUserId);
+    res.json({ success: true, message: 'Transaction saved successfully', transaction });
+
+  } catch (error) {
+    console.error("Error saving transaction:", error);
+    res.status(500).json({ success: false, error: 'Failed to save transaction' });
+  }
+});
+
+// Endpoint to Get Transaction History for a User (Supabase Auth)
+// Expects supabaseUserId as a query parameter, e.g., /api/transactions/history?userId=xxx
+app.get('/api/transactions/history', async (req, res) => {
+  try {
+    const { userId } = req.query; // Get Supabase user ID from query param
+    if (!userId) {
+      return res.status(400).json({ success: false, error: 'Missing required userId query parameter' });
+    }
+
+    const transactions = await Transaction.find({ supabaseUserId: userId }).sort({ timestamp: -1 }); // Fetch by supabaseUserId
+    
+    console.log(`Fetched history for Supabase User: ${userId}, Count: ${transactions.length}`);
+    res.json({ success: true, transactions });
+
+  } catch (error) {
+    console.error("Error fetching transaction history:", error);
+    res.status(500).json({ success: false, error: 'Failed to fetch transaction history' });
+  }
+});
+
+// Existing /api/blockchain/history endpoint 
+app.get('/api/blockchain/history', fetchuser, async (req, res) => {
+  console.log("Fetching blockchain history for user:", req.user.id); 
+  // Assuming the original implementation was here 
+  // If this endpoint wasn't fully implemented, we might need to add placeholder logic
+  // For now, just adding a basic response if nothing was here before
+  res.status(501).json({ success: false, error: 'Blockchain history endpoint not fully implemented' }); 
 });
 
 // Starting Express Server

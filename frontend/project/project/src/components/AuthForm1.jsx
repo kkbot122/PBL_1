@@ -1,14 +1,21 @@
 import React, { useState } from 'react';
 import { Mail, Lock, Loader } from 'lucide-react';
-import { supabase } from '../lib/supabase';
 import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../contexts/AuthContext';
 
 const AuthForm = ({ type = 'login' }) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
-  const navigate = useNavigate(); // ✅ Use navigate hook properly
+  const { signIn, signUp, user } = useAuth();
+  const navigate = useNavigate();
+
+  React.useEffect(() => {
+    if (user) {
+      navigate('/dashboard');
+    }
+  }, [user, navigate]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -18,16 +25,14 @@ const AuthForm = ({ type = 'login' }) => {
     try {
       let response;
       if (type === 'login') {
-        response = await supabase.auth.signInWithPassword({ email, password });
+        response = await signIn(email, password);
       } else {
-        response = await supabase.auth.signUp({ email, password });
+        response = await signUp(email, password);
       }
 
       if (response.error) throw response.error;
-
-      // ✅ Redirect to Dashboard after successful login
-      navigate('/dashboard');
     } catch (err) {
+      console.error("Auth error:", err);
       setError(err.message);
     } finally {
       setLoading(false);
@@ -56,7 +61,7 @@ const AuthForm = ({ type = 'login' }) => {
             <input
               type="email"
               value={email}
-              onChange={(e) => setEmail(e.target.value)}
+              onChange={(e) => setEmail(e.target.value.trim())}
               className="w-full pl-10 pr-4 py-2 bg-gray-900 text-white border border-gray-800 rounded-lg focus:outline-none focus:border-red-500"
               placeholder="Enter your email"
               required
@@ -73,7 +78,7 @@ const AuthForm = ({ type = 'login' }) => {
             <input
               type="password"
               value={password}
-              onChange={(e) => setPassword(e.target.value)}
+              onChange={(e) => setPassword(e.target.value.trim())}
               className="w-full pl-10 pr-4 py-2 bg-gray-900 text-white border border-gray-800 rounded-lg focus:outline-none focus:border-red-500"
               placeholder="Enter your password"
               required

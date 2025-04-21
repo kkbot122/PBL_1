@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { useAuth } from "../../contexts/AuthContext";
 import { useNavigate } from "react-router-dom";
-import { Wallet, Settings, LogOut, History, Shield, AlertTriangle, CheckCircle, Activity, Clock, TrendingUp, AlertOctagon } from "lucide-react";
+import { Wallet, Settings, LogOut, History, Shield, AlertTriangle, CheckCircle, Activity, Clock, TrendingUp, AlertOctagon, Save } from "lucide-react";
 import axios from "axios";
 
 const UserDashboard = () => {
@@ -12,10 +12,13 @@ const UserDashboard = () => {
   const [amount, setAmount] = useState("");
   const [recipientAddress, setRecipientAddress] = useState("");
   const [error, setError] = useState(null);
+  const [saveStatus, setSaveStatus] = useState({ loading: false, error: null, success: false });
 
   const handlePrediction = async () => {
     setLoading(true);
     setError(null);
+    setPrediction(null);
+    setSaveStatus({ loading: false, error: null, success: false });
     
     try {
       const response = await axios.post('http://localhost:4000/api/predict', {
@@ -30,6 +33,41 @@ const UserDashboard = () => {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleSaveTransaction = async () => {
+    if (!prediction || !user) {
+      console.error("Cannot save: Missing prediction data or user not logged in.");
+      setSaveStatus({ loading: false, error: "Cannot save transaction data.", success: false });
+      return;
+    } 
+
+    setSaveStatus({ loading: true, error: null, success: false });
+    
+    try {
+      const payload = {
+        supabaseUserId: user.id,
+        amount: parseFloat(amount),
+        recipientAddress: recipientAddress,
+        riskLevel: prediction.riskLevel,
+        confidence: prediction.confidence,
+        transactionCategory: prediction.transactionCategory,
+        riskFactors: prediction.riskFactors,
+        securitySuggestions: prediction.securitySuggestions,
+        analysisMetrics: prediction.analysisMetrics
+      };
+
+      const response = await axios.post('http://localhost:4000/api/transactions/save', payload);
+
+      if (response.data.success) {
+        setSaveStatus({ loading: false, error: null, success: true });
+      } else {
+        setSaveStatus({ loading: false, error: response.data.error || "Failed to save transaction", success: false });
+      }
+    } catch (error) {
+      console.error("Error saving transaction:", error);
+      setSaveStatus({ loading: false, error: error.response?.data?.error || "An error occurred while saving.", success: false });
+    } 
   };
 
   const getRiskLevelColor = (level) => {
@@ -204,6 +242,28 @@ const UserDashboard = () => {
                           ))}
                         </ul>
                       </div>
+
+                      {!saveStatus.success && (
+                        <div className="mt-6">
+                          <button 
+                            onClick={handleSaveTransaction}
+                            disabled={saveStatus.loading || !user}
+                            className="w-full flex items-center justify-center space-x-2 bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-lg transition-colors disabled:opacity-50"
+                          >
+                            <Save className="h-5 w-5" />
+                            <span>{saveStatus.loading ? 'Saving...' : 'Save Transaction to History'}</span>
+                          </button>
+                          {saveStatus.error && (
+                            <p className="text-red-400 text-sm mt-2 text-center">Error: {saveStatus.error}</p>
+                          )}
+                        </div>
+                      )}
+                      {saveStatus.success && (
+                         <div className="mt-6 bg-green-900/50 border border-green-500 p-4 rounded-lg flex items-center justify-center space-x-2">
+                           <CheckCircle className="h-5 w-5 text-green-500" />
+                           <p className="text-green-200">Transaction saved successfully!</p>
+                         </div>
+                      )}
                     </div>
                   )}
                 </div>
@@ -215,10 +275,12 @@ const UserDashboard = () => {
               <div className="bg-gray-900 rounded-xl p-6">
                 <div className="text-center">
                   <div className="w-20 h-20 bg-gray-800 rounded-full flex items-center justify-center mx-auto mb-4">
-                    <span className="text-2xl font-bold text-red-500">{user.email[0].toUpperCase()}</span>
+                    <span className="text-2xl font-bold text-red-500">
+                      {user?.email?.[0]?.toUpperCase() || 'U'}
+                    </span>
                   </div>
-                  <h2 className="font-bold text-xl text-white mb-1">{user.user_metadata.name || "User"}</h2>
-                  <p className="text-gray-400 text-sm">{user.email}</p>
+                  <h2 className="font-bold text-xl text-white mb-1">{user?.user_metadata?.name || "User"}</h2>
+                  <p className="text-gray-400 text-sm">{user?.email || "No email found"}</p>
                 </div>
               </div>
 
