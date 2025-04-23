@@ -287,7 +287,7 @@ app.post("/removeproduct", async (req, res) => {
 // ML Prediction Endpoint
 app.post("/api/predict", async (req, res) => {
   try {
-    const { amount, recipientAddress } = req.body;
+    const { amount, recipientAddress, supabaseUserId } = req.body;
 
     if (!amount || !recipientAddress) {
       return res.status(400).json({ 
@@ -295,12 +295,13 @@ app.post("/api/predict", async (req, res) => {
       });
     }
 
-    // Use our new ML service instead of the FastAPI service
+    // Use our ML service for prediction
     const mlService = require('./services/mlService');
+    let predictionData;
     
     try {
       // Call our ML service for prediction
-      const predictionData = await mlService.predictRisk({
+      predictionData = await mlService.predictRisk({
         amount: parseFloat(amount),
         recipientAddress,
         // You can add additional features here if needed
@@ -323,6 +324,57 @@ app.post("/api/predict", async (req, res) => {
       });
 
       await prediction.save();
+      
+      // ENHANCEMENT: Automatically save to blockchain if user is authenticated
+      if (supabaseUserId) {
+        try {
+          console.log("Automatically saving transaction to blockchain...");
+          
+          // Validate transaction on blockchain
+          const blockchainResult = await blockchainService.validateTransaction(
+            amount,
+            recipientAddress,
+            predictionData.riskLevel,
+            process.env.PRIVATE_KEY 
+          );
+          
+          if (blockchainResult.success) {
+            console.log("Transaction saved to blockchain successfully");
+            
+            // Add blockchain transaction hash to response
+            predictionData.blockchainTxHash = blockchainResult.transactionHash;
+            predictionData.savedToBlockchain = true;
+            
+            // Save the transaction details with blockchain hash
+            const transactionRecord = new Transaction({
+              supabaseUserId,
+              amount,
+              recipientAddress,
+              riskLevel: predictionData.riskLevel,
+              confidence: predictionData.confidence,
+              transactionCategory: predictionData.transactionCategory,
+              riskFactors: predictionData.riskFactors,
+              securitySuggestions: predictionData.securitySuggestions,
+              analysisMetrics: predictionData.analysisMetrics,
+              blockchainHash: blockchainResult.transactionHash,
+              timestamp: new Date()
+            });
+            
+            await transactionRecord.save();
+          } else {
+            console.error("Failed to save to blockchain:", blockchainResult.error);
+            predictionData.blockchainError = blockchainResult.error;
+            predictionData.savedToBlockchain = false;
+          }
+        } catch (blockchainError) {
+          console.error("Error saving to blockchain:", blockchainError);
+          predictionData.blockchainError = blockchainError.message;
+          predictionData.savedToBlockchain = false;
+        }
+      } else {
+        predictionData.savedToBlockchain = false;
+        predictionData.blockchainMessage = "Login required to save to blockchain";
+      }
 
       // Send the prediction response to frontend
       res.json(predictionData);

@@ -3,6 +3,7 @@ import { useAuth } from "../../contexts/AuthContext";
 import { useNavigate } from "react-router-dom";
 import { Wallet, Settings, LogOut, History, Shield, AlertTriangle, CheckCircle, Activity, Clock, TrendingUp, AlertOctagon, Save, Anchor } from "lucide-react";
 import axios from "axios";
+import FraudDetectionDashboard from "./FraudDetectionDashboard";
 
 const UserDashboard = () => {
   const { user, signOut } = useAuth();
@@ -26,9 +27,19 @@ const UserDashboard = () => {
       const response = await axios.post('http://localhost:4000/api/predict', {
         amount: parseFloat(amount),
         recipientAddress: recipientAddress,
+        supabaseUserId: user?.id
       });
 
       setPrediction(response.data);
+      
+      if (response.data.savedToBlockchain) {
+        setBlockchainStatus({
+          loading: false,
+          error: null,
+          success: true,
+          txHash: response.data.blockchainTxHash
+        });
+      }
     } catch (error) {
       console.error('Prediction error:', error);
       setError(error.response?.data?.message || "Failed to get prediction");
@@ -158,7 +169,7 @@ const UserDashboard = () => {
             {/* Left Section - ML Predictor */}
             <div className="md:col-span-8 space-y-6">
               <div className="bg-gray-900 rounded-xl p-6">
-                <h2 className="text-2xl font-bold text-white mb-6">Transaction Risk Predictor</h2>
+                <h2 className="text-2xl font-bold text-white mb-6">Transaction Fraud Detection</h2>
                 
                 <div className="space-y-4">
                   <div className="grid grid-cols-2 gap-4">
@@ -189,7 +200,7 @@ const UserDashboard = () => {
                     disabled={loading || !amount || !recipientAddress}
                     className="w-full bg-red-500 hover:bg-red-600 text-white py-3 rounded-lg transition-colors disabled:opacity-50"
                   >
-                    {loading ? 'Analyzing...' : 'Predict Risk'}
+                    {loading ? 'Analyzing...' : 'Detect Fraud Risk'}
                   </button>
 
                   {error && (
@@ -200,144 +211,56 @@ const UserDashboard = () => {
                   )}
 
                   {prediction && (
-                    <div className="space-y-6">
-                      {/* Main Risk Assessment */}
-                      <div className="bg-gray-800 p-6 rounded-lg">
-                        <h3 className="text-lg font-semibold text-white mb-4 flex items-center space-x-2">
-                          <CheckCircle className="h-5 w-5 text-green-500" />
-                          <span>Risk Assessment</span>
-                        </h3>
-                        <div className="grid grid-cols-2 gap-4 mb-4">
-                          <div className="bg-gray-900/50 p-4 rounded-lg">
-                            <p className="text-sm text-gray-400 mb-1">Risk Level</p>
-                            <p className={`text-lg font-semibold ${getRiskLevelColor(prediction.riskLevel)}`}>
-                              {prediction.riskLevel}
-                            </p>
-                          </div>
-                          <div className="bg-gray-900/50 p-4 rounded-lg">
-                            <p className="text-sm text-gray-400 mb-1">Confidence</p>
-                            <p className="text-lg font-semibold text-blue-400">
-                              {prediction.confidence}
-                            </p>
-                          </div>
-                        </div>
-                        <div className="bg-gray-900/50 p-4 rounded-lg">
-                          <p className="text-sm text-gray-400 mb-2">Transaction Category</p>
-                          <p className="text-white">{prediction.transactionCategory}</p>
-                        </div>
-                      </div>
+                    <FraudDetectionDashboard prediction={prediction} />
+                  )}
 
-                      {/* Detailed Metrics */}
-                      <div className="bg-gray-800 p-6 rounded-lg">
-                        <h3 className="text-lg font-semibold text-white mb-4 flex items-center space-x-2">
-                          <Activity className="h-5 w-5 text-blue-500" />
-                          <span>Transaction Metrics</span>
-                        </h3>
-                        <div className="grid grid-cols-2 gap-4">
-                          <div className="bg-gray-900/50 p-4 rounded-lg">
-                            <div className="flex items-center justify-between">
-                              <p className="text-sm text-gray-400">Velocity Score</p>
-                              <Clock className="h-4 w-4 text-blue-400" />
-                            </div>
-                            <p className={`text-lg font-semibold ${getMetricColor(prediction.analysisMetrics.velocityScore, { medium: 3, high: 5 })}`}>
-                              {prediction.analysisMetrics.velocityScore} tx/day
-                            </p>
-                          </div>
-                          <div className="bg-gray-900/50 p-4 rounded-lg">
-                            <div className="flex items-center justify-between">
-                              <p className="text-sm text-gray-400">Amount Deviation</p>
-                              <TrendingUp className="h-4 w-4 text-blue-400" />
-                            </div>
-                            <p className={`text-lg font-semibold ${getMetricColor(prediction.analysisMetrics.amountDeviation, { medium: 0.5, high: 1 })}`}>
-                              {(prediction.analysisMetrics.amountDeviation * 100).toFixed(1)}%
-                            </p>
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Risk Factors */}
-                      {prediction.riskFactors.length > 0 && (
-                        <div className="bg-gray-800 p-6 rounded-lg">
-                          <h3 className="text-lg font-semibold text-white mb-4 flex items-center space-x-2">
-                            <AlertOctagon className="h-5 w-5 text-yellow-500" />
-                            <span>Risk Factors</span>
-                          </h3>
-                          <ul className="space-y-2">
-                            {prediction.riskFactors.map((factor, index) => (
-                              <li key={index} className="flex items-start space-x-2">
-                                <AlertTriangle className="h-4 w-4 text-yellow-500 mt-1 flex-shrink-0" />
-                                <span className="text-gray-300">{factor}</span>
-                              </li>
-                            ))}
-                          </ul>
-                        </div>
-                      )}
-
-                      {/* Security Recommendations */}
-                      <div className="bg-gray-800 p-6 rounded-lg">
-                        <h3 className="text-lg font-semibold text-white mb-4 flex items-center space-x-2">
-                          <Shield className="h-5 w-5 text-green-500" />
-                          <span>Security Recommendations</span>
-                        </h3>
-                        <ul className="space-y-2">
-                          {prediction.securitySuggestions.map((suggestion, index) => (
-                            <li key={index} className="flex items-start space-x-2">
-                              <CheckCircle className="h-4 w-4 text-green-500 mt-1 flex-shrink-0" />
-                              <span className="text-gray-300">{suggestion}</span>
-                            </li>
-                          ))}
-                        </ul>
-                      </div>
-
-                      {!saveStatus.success && (
-                        <div className="mt-6">
-                          <button 
-                            onClick={handleSaveTransaction}
-                            disabled={saveStatus.loading || !user}
-                            className="w-full flex items-center justify-center space-x-2 bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-lg transition-colors disabled:opacity-50 mb-3"
-                          >
-                            <Save className="h-5 w-5" />
-                            <span>{saveStatus.loading ? 'Saving...' : 'Save Transaction to DB History'}</span>
-                          </button>
-                          {saveStatus.error && (
-                            <p className="text-red-400 text-sm mt-2 text-center">Error: {saveStatus.error}</p>
-                          )}
-                        </div>
-                      )}
-                      {saveStatus.success && (
-                         <div className="mt-6 mb-3 bg-green-900/50 border border-green-500 p-4 rounded-lg flex items-center justify-center space-x-2">
-                           <CheckCircle className="h-5 w-5 text-green-500" />
-                           <p className="text-green-200">Transaction saved to DB successfully!</p>
-                         </div>
-                      )}
-
-                      {!blockchainStatus.success && (
-                        <div className="mt-2">
-                          <button 
-                            onClick={handleLogToBlockchain}
-                            disabled={blockchainStatus.loading || !user || !prediction}
-                            className="w-full flex items-center justify-center space-x-2 bg-purple-600 hover:bg-purple-700 text-white py-3 rounded-lg transition-colors disabled:opacity-50"
-                          >
-                            <Anchor className="h-5 w-5" />
-                            <span>{blockchainStatus.loading ? 'Logging to Blockchain...' : 'Log Transaction On-Chain'}</span>
-                          </button>
-                          {blockchainStatus.error && (
-                            <p className="text-red-400 text-sm mt-2 text-center">Error: {blockchainStatus.error}</p>
-                          )}
-                        </div>
-                      )}
-                      {blockchainStatus.success && (
-                         <div className="mt-2 bg-green-900/50 border border-green-500 p-4 rounded-lg flex items-center justify-center space-x-2">
-                           <CheckCircle className="h-5 w-5 text-green-500" />
-                           <div>
-                             <p className="text-green-200">Transaction logged on blockchain!</p>
-                             {blockchainStatus.txHash && (
-                               <p className="text-xs text-gray-400 mt-1">Tx Hash: <span className="font-mono break-all">{blockchainStatus.txHash}</span></p>
-                             )}
-                           </div>
-                         </div>
+                  {prediction && !prediction.savedToBlockchain && !saveStatus.success && (
+                    <div className="mt-6">
+                      <button 
+                        onClick={handleSaveTransaction}
+                        disabled={saveStatus.loading || !user}
+                        className="w-full flex items-center justify-center space-x-2 bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-lg transition-colors disabled:opacity-50 mb-3"
+                      >
+                        <Save className="h-5 w-5" />
+                        <span>{saveStatus.loading ? 'Saving...' : 'Save Transaction to DB History'}</span>
+                      </button>
+                      {saveStatus.error && (
+                        <p className="text-red-400 text-sm mt-2 text-center">Error: {saveStatus.error}</p>
                       )}
                     </div>
+                  )}
+                  {saveStatus.success && (
+                     <div className="mt-6 mb-3 bg-green-900/50 border border-green-500 p-4 rounded-lg flex items-center justify-center space-x-2">
+                       <CheckCircle className="h-5 w-5 text-green-500" />
+                       <p className="text-green-200">Transaction saved to DB successfully!</p>
+                     </div>
+                  )}
+
+                  {prediction && !prediction.savedToBlockchain && !blockchainStatus.success && (
+                    <div className="mt-2">
+                      <button 
+                        onClick={handleLogToBlockchain}
+                        disabled={blockchainStatus.loading || !user || !prediction}
+                        className="w-full flex items-center justify-center space-x-2 bg-purple-600 hover:bg-purple-700 text-white py-3 rounded-lg transition-colors disabled:opacity-50"
+                      >
+                        <Anchor className="h-5 w-5" />
+                        <span>{blockchainStatus.loading ? 'Logging to Blockchain...' : 'Log Transaction On-Chain'}</span>
+                      </button>
+                      {blockchainStatus.error && (
+                        <p className="text-red-400 text-sm mt-2 text-center">Error: {blockchainStatus.error}</p>
+                      )}
+                    </div>
+                  )}
+                  {blockchainStatus.success && (
+                     <div className="mt-2 bg-green-900/50 border border-green-500 p-4 rounded-lg flex items-center justify-center space-x-2">
+                       <CheckCircle className="h-5 w-5 text-green-500" />
+                       <div>
+                         <p className="text-green-200">Transaction logged on blockchain!</p>
+                         {blockchainStatus.txHash && (
+                           <p className="text-xs text-gray-400 mt-1">Tx Hash: <span className="font-mono break-all">{blockchainStatus.txHash}</span></p>
+                         )}
+                       </div>
+                     </div>
                   )}
                 </div>
               </div>
