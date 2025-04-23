@@ -295,15 +295,17 @@ app.post("/api/predict", async (req, res) => {
       });
     }
 
-    // Forward the request to the ML service
+    // Use our new ML service instead of the FastAPI service
+    const mlService = require('./services/mlService');
+    
     try {
-      const mlResponse = await axios.post('http://localhost:8000/predict', {
+      // Call our ML service for prediction
+      const predictionData = await mlService.predictRisk({
         amount: parseFloat(amount),
-        recipientAddress
+        recipientAddress,
+        // You can add additional features here if needed
+        additionalFeatures: {}
       });
-
-      // Get the prediction data
-      const predictionData = mlResponse.data;
 
       // Store the prediction in database
       const prediction = new TransactionRisk({
@@ -327,9 +329,37 @@ app.post("/api/predict", async (req, res) => {
 
     } catch (mlError) {
       console.error("ML Service Error:", mlError.message);
-      res.status(500).json({ 
-        message: "Error connecting to ML service. Please try again." 
-      });
+      
+      // Try fallback prediction if ML service fails
+      try {
+        const fallbackPrediction = mlService.fallbackPrediction(parseFloat(amount), recipientAddress);
+        
+        // Store the fallback prediction
+        const prediction = new TransactionRisk({
+          amount,
+          recipientAddress,
+          riskLevel: fallbackPrediction.riskLevel,
+          confidence: fallbackPrediction.confidence,
+          details: fallbackPrediction.details + " (fallback)",
+          recommendations: fallbackPrediction.securitySuggestions,
+          mlPrediction: fallbackPrediction.analysisMetrics.historicalRiskScore,
+          analysisMetrics: fallbackPrediction.analysisMetrics,
+          riskFactors: [...(fallbackPrediction.riskFactors || []), "Used fallback prediction"],
+          securitySuggestions: fallbackPrediction.securitySuggestions,
+          transactionCategory: fallbackPrediction.transactionCategory
+        });
+        
+        await prediction.save();
+        
+        // Send fallback response
+        res.json(fallbackPrediction);
+        
+      } catch (fallbackError) {
+        console.error("Fallback prediction error:", fallbackError);
+        res.status(500).json({ 
+          message: "Error in ML service and fallback prediction. Please try again." 
+        });
+      }
     }
 
   } catch (error) {
@@ -370,11 +400,23 @@ app.post("/api/transactions", async (req, res) => {
            return res.status(400).json({ success: false, error: 'supabaseUserId is required in the request body' });
         }
 
-        // Get risk assessment from ML service
-        const mlResponse = await axios.post("http://localhost:8000/predict", {
-            amount,
-            recipientAddress
-        });
+        // Get risk assessment from our ML service
+        const mlService = require('./services/mlService');
+        let mlResponse;
+        
+        try {
+            // Call our ML service for prediction
+            mlResponse = await mlService.predictRisk({
+                amount: parseFloat(amount),
+                recipientAddress,
+                additionalFeatures: {}
+            });
+        } catch (mlError) {
+            console.error("ML Service Error:", mlError.message);
+            // Use fallback prediction if ML service fails
+            mlResponse = mlService.fallbackPrediction(parseFloat(amount), recipientAddress);
+            console.log("Using fallback prediction:", mlResponse);
+        }
 
         // Extract all necessary details from ML response
         const { 
@@ -384,7 +426,7 @@ app.post("/api/transactions", async (req, res) => {
             riskFactors, 
             securitySuggestions,
             analysisMetrics 
-        } = mlResponse.data;
+        } = mlResponse;
 
         // Validate transaction on blockchain
         const blockchainResult = await blockchainService.validateTransaction(
