@@ -535,8 +535,8 @@ app.get('/api/transactions/history', async (req, res) => {
 });
 
 // Updated /api/blockchain/history endpoint 
-app.get('/api/blockchain/history', fetchuser, async (req, res) => {
-  console.log("Fetching blockchain history for user:", req.user.id); 
+app.get('/api/blockchain/history', async (req, res) => {
+  console.log("Fetching blockchain history");
   try {
     // Get wallet address from private key - this is where transactions are recorded
     const privateKey = process.env.PRIVATE_KEY;

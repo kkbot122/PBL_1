@@ -18,35 +18,48 @@ const BlockchainHistory = () => {
     setLoading(true);
     setError(null);
 
-    const fetchAddressAndHistory = async () => {
-      let backendAddress = null;
+    const fetchBlockchainHistory = async () => {
       try {
-        // 1. Fetch the backend wallet address
-        const addrResponse = await axios.get('http://localhost:4000/api/blockchain/wallet-address');
-        if (addrResponse.data.success) {
-          backendAddress = addrResponse.data.address;
+        // Direct call to API endpoint
+        console.log('Fetching blockchain history data...');
+        const response = await axios.get('http://localhost:4000/api/blockchain/wallet-address');
+        
+        if (response.data.success) {
+          // Get wallet address
+          const address = response.data.address;
           if (isMounted) {
-            setWalletAddress(backendAddress);
+            setWalletAddress(address);
+            console.log('Wallet address:', address);
+          }
+          
+          // Now try to get the transaction history
+          try {
+            const historyResponse = await axios.get(`http://localhost:4000/api/blockchain/history`);
+            
+            if (historyResponse.data.success) {
+              if (isMounted) {
+                console.log('Transaction history:', historyResponse.data.transactions);
+                setTransactions(historyResponse.data.transactions || []);
+              }
+            } else {
+              console.warn('History response unsuccessful:', historyResponse.data);
+              if (isMounted) {
+                setError(historyResponse.data.error || "Failed to fetch transaction history");
+              }
+            }
+          } catch (historyError) {
+            console.error('Error fetching transaction history:', historyError);
+            if (isMounted) {
+              setError(historyError.message || "Failed to fetch transaction history");
+            }
           }
         } else {
-          throw new Error(addrResponse.data.error || 'Failed to fetch backend wallet address');
+          throw new Error(response.data.error || 'Failed to fetch wallet address');
         }
-
-        // 2. Fetch history using the fetched address
-        const histResponse = await axios.get(`http://localhost:4000/api/transactions/history/${backendAddress}`);
-        if (histResponse.data.success) {
-          if (isMounted) {
-            setTransactions(histResponse.data.transactions);
-          }
-        } else {
-          throw new Error(histResponse.data.error || 'Failed to fetch blockchain history');
-        }
-
       } catch (err) {
-        console.error("Error fetching blockchain data:", err);
+        console.error("Error in blockchain history fetch:", err);
         if (isMounted) {
-           setError(err.message || "An error occurred while fetching blockchain data.");
-           if (!backendAddress) setWalletAddress('Error fetching address'); // Update address state on error too
+          setError(err.message || "An error occurred while fetching blockchain data.");
         }
       } finally {
         if (isMounted) {
@@ -55,7 +68,7 @@ const BlockchainHistory = () => {
       }
     };
 
-    fetchAddressAndHistory();
+    fetchBlockchainHistory();
 
     // Cleanup function
     return () => {
@@ -118,7 +131,7 @@ const BlockchainHistory = () => {
               </div>
             )}
 
-            {!loading && !error && transactions.length === 0 && (
+            {!loading && !error && (!transactions || transactions.length === 0) && (
               <div className="text-center py-12">
                 <div className="w-16 h-16 bg-gray-800 rounded-full flex items-center justify-center mx-auto mb-6">
                   <Anchor className="h-8 w-8 text-gray-400" />
@@ -136,7 +149,7 @@ const BlockchainHistory = () => {
               </div>
             )}
 
-            {!loading && !error && transactions.length > 0 && (
+            {!loading && !error && transactions && transactions.length > 0 && (
               <div className="space-y-4">
                 {transactions.map((tx, index) => (
                   <div key={index} className="bg-gray-800 p-4 rounded-lg border border-gray-700">
@@ -148,7 +161,6 @@ const BlockchainHistory = () => {
                       <span>Amount (ETH):</span> <span className="text-white font-mono">{tx.amount}</span> 
                       <span>Recipient:</span> <span className="text-white font-mono break-all">{tx.recipientAddress}</span>
                       <span>Verified:</span> <span className={`font-mono ${tx.isVerified ? 'text-green-400' : 'text-red-400'}`}>{tx.isVerified ? 'Yes' : 'No'}</span>
-                      {/* Add other relevant fields from the blockchain tx if needed */}
                     </div>
                   </div>
                 ))}
