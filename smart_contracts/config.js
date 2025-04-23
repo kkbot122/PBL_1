@@ -7,7 +7,7 @@ const config = {
     
     // Contract configuration
     contract: {
-        address: "0x9fE4673667d2D9a65f0992f2272dE9f3c7fa6e0", // Newly deployed contract address
+        address: "0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512", // Newly deployed contract address
         abi: [
             {
                 "inputs": [],
