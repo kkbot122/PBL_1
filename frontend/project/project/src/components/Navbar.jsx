@@ -4,10 +4,10 @@ import { Shield } from 'lucide-react';
 
 const Navbar = () => {
   return (
-    <nav className="bg-[#111827] p-4 sticky top-0 z-20 border-b border-gray-800">
+    <nav className="bg-black p-4 sticky top-0 z-20">
       <div className="max-w-7xl mx-auto flex justify-between items-center">
         <Link to="/" className="flex items-center space-x-2">
-          <Shield className="h-8 w-8 text-red-500" />
+          <Shield className="h-6 w-6 text-red-500" />
           <span className="text-white text-xl font-semibold">SecureFlow</span>
         </Link>
         <div className="flex items-center space-x-8">
