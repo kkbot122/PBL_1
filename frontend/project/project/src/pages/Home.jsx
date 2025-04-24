@@ -76,10 +76,9 @@ const Home = () => {
                     <TrendingUp size={16} className="text-white" />
                   </div>
                   <div>
-                    <h3 className="font-bold mb-1">Intelligent Trading</h3>
+                    <h3 className="font-bold mb-1">Real-Time Monitoring</h3>
                     <p className="text-gray-400">
-                      Machine learning algorithms analyze market trends to provide smart 
-                      trading recommendations.
+                      Real-time monitoring of transactions to detect and prevent fraud.
                     </p>
                   </div>
                 </div>
