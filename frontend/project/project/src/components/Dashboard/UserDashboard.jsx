@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { useAuth } from "../../contexts/AuthContext";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
 import { Wallet, Settings, LogOut, History, Shield, AlertTriangle, CheckCircle, Activity, Clock, TrendingUp, AlertOctagon, Save, Anchor, Database } from "lucide-react";
 import axios from "axios";
 import FraudDetectionDashboard from "./FraudDetectionDashboard";
@@ -15,6 +15,11 @@ const UserDashboard = () => {
   const [error, setError] = useState(null);
   const [saveStatus, setSaveStatus] = useState({ loading: false, error: null, success: false });
   const [blockchainStatus, setBlockchainStatus] = useState({ loading: false, error: null, success: false, txHash: null });
+
+  const handleLogout = () => {
+    signOut();
+    navigate('/'); // Redirect to home page after logout
+  };
 
   const handlePrediction = async () => {
     setLoading(true);
@@ -144,180 +149,93 @@ const UserDashboard = () => {
 
   return (
     <div className="min-h-screen bg-black text-white">
-      {/* Navbar */}
-      <nav className="border-b border-gray-800 bg-gray-900/50 backdrop-blur-lg fixed w-full z-10">
-        <div className="container mx-auto px-4 py-4 flex justify-between items-center">
-          <div className="flex items-center space-x-2">
-            <Wallet className="h-6 w-6 text-red-500" />
-            <span className="text-xl font-bold text-white">SecureFlow</span>
-          </div>
-          <div className="flex items-center space-x-4">
-            <button className="p-2 hover:bg-gray-800 rounded-lg">
-              <Settings className="h-5 w-5 text-white" />
-            </button>
-            <button onClick={signOut} className="p-2 hover:bg-gray-800 rounded-lg">
-              <LogOut className="h-5 w-5 text-red-500" />
-            </button>
-          </div>
+      {/* Top Navigation */}
+      <nav className="bg-gray-900 p-4 flex justify-between items-center">
+        <div className="flex items-center space-x-2">
+          <Shield className="h-6 w-6 text-red-500" />
+          <span className="text-white text-xl font-semibold">SecureFlow</span>
+        </div>
+        <div className="flex items-center space-x-4">
+          <Link to="/settings" className="text-white hover:text-gray-300">
+            <Settings className="h-5 w-5" />
+          </Link>
+          <button onClick={handleLogout} className="text-red-500 hover:text-red-400">
+            <LogOut className="h-5 w-5" />
+          </button>
         </div>
       </nav>
 
       {/* Main Content */}
-      <main className="pt-20 pb-8 px-4">
-        <div className="container mx-auto">
-          <div className="grid gap-6 md:grid-cols-12">
-            {/* Left Section - ML Predictor */}
-            <div className="md:col-span-8 space-y-6">
-              <div className="bg-gray-900 rounded-xl p-6">
-                <h2 className="text-2xl font-bold text-white mb-6">Transaction Fraud Detection</h2>
-                
-                <div className="space-y-4">
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="bg-gray-800 p-4 rounded-lg">
-                      <label className="block text-sm text-gray-400 mb-2">Amount</label>
-                      <input 
-                        type="number" 
-                        value={amount}
-                        onChange={(e) => setAmount(e.target.value)}
-                        className="w-full bg-gray-700 text-white rounded-lg px-4 py-2"
-                        placeholder="Enter amount"
-                      />
-                    </div>
-                    <div className="bg-gray-800 p-4 rounded-lg">
-                      <label className="block text-sm text-gray-400 mb-2">Recipient Address</label>
-                      <input 
-                        type="text"
-                        value={recipientAddress}
-                        onChange={(e) => setRecipientAddress(e.target.value)}
-                        className="w-full bg-gray-700 text-white rounded-lg px-4 py-2"
-                        placeholder="Enter recipient address"
-                      />
-                    </div>
-                  </div>
-
-                  <button 
-                    onClick={handlePrediction}
-                    disabled={loading || !amount || !recipientAddress}
-                    className="w-full bg-red-500 hover:bg-red-600 text-white py-3 rounded-lg transition-colors disabled:opacity-50"
-                  >
-                    {loading ? 'Analyzing...' : 'Detect Fraud Risk'}
-                  </button>
-
-                  {error && (
-                    <div className="bg-red-900/50 border border-red-500 p-4 rounded-lg flex items-start space-x-2">
-                      <AlertTriangle className="h-5 w-5 text-red-500 flex-shrink-0 mt-0.5" />
-                      <p className="text-red-200">{error}</p>
-                    </div>
-                  )}
-
-                  {prediction && (
-                    <FraudDetectionDashboard prediction={prediction} />
-                  )}
-
-                  {prediction && !prediction.savedToBlockchain && !saveStatus.success && (
-                    <div className="mt-6">
-                      <button 
-                        onClick={handleSaveTransaction}
-                        disabled={saveStatus.loading || !user}
-                        className="w-full flex items-center justify-center space-x-2 bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-lg transition-colors disabled:opacity-50 mb-3"
-                      >
-                        <Save className="h-5 w-5" />
-                        <span>{saveStatus.loading ? 'Saving...' : 'Save Transaction to DB History'}</span>
-                      </button>
-                      {saveStatus.error && (
-                        <p className="text-red-400 text-sm mt-2 text-center">Error: {saveStatus.error}</p>
-                      )}
-                    </div>
-                  )}
-                  {saveStatus.success && (
-                     <div className="mt-6 mb-3 bg-green-900/50 border border-green-500 p-4 rounded-lg flex items-center justify-center space-x-2">
-                       <CheckCircle className="h-5 w-5 text-green-500" />
-                       <p className="text-green-200">Transaction saved to DB successfully!</p>
-                     </div>
-                  )}
-
-                  {prediction && !prediction.savedToBlockchain && !blockchainStatus.success && (
-                    <div className="mt-2">
-                      <button 
-                        onClick={handleLogToBlockchain}
-                        disabled={blockchainStatus.loading || !user || !prediction}
-                        className="w-full flex items-center justify-center space-x-2 bg-purple-600 hover:bg-purple-700 text-white py-3 rounded-lg transition-colors disabled:opacity-50"
-                      >
-                        <Anchor className="h-5 w-5" />
-                        <span>{blockchainStatus.loading ? 'Logging to Blockchain...' : 'Log Transaction On-Chain'}</span>
-                      </button>
-                      {blockchainStatus.error && (
-                        <p className="text-red-400 text-sm mt-2 text-center">Error: {blockchainStatus.error}</p>
-                      )}
-                    </div>
-                  )}
-                  {blockchainStatus.success && (
-                     <div className="mt-2 bg-green-900/50 border border-green-500 p-4 rounded-lg flex items-center justify-center space-x-2">
-                       <CheckCircle className="h-5 w-5 text-green-500" />
-                       <div>
-                         <p className="text-green-200">Transaction logged on blockchain!</p>
-                         {blockchainStatus.txHash && (
-                           <p className="text-xs text-gray-400 mt-1">Tx Hash: <span className="font-mono break-all">{blockchainStatus.txHash}</span></p>
-                         )}
-                       </div>
-                     </div>
-                  )}
-                </div>
-              </div>
+      <div className="p-6 flex gap-6">
+        {/* Left Column - Fraud Detection Form */}
+        <div className="flex-1">
+          <div className="bg-gray-900 rounded-lg p-6">
+            <h2 className="text-xl font-bold mb-6">Transaction Fraud Detection</h2>
+            
+            <div className="mb-4">
+              <label className="block text-sm mb-2">Amount</label>
+              <input
+                type="text"
+                value={amount}
+                onChange={(e) => setAmount(e.target.value)}
+                placeholder="Enter amount"
+                className="w-full bg-gray-800 text-white p-3 rounded-md"
+              />
             </div>
+            
+            <div className="mb-6">
+              <label className="block text-sm mb-2">Recipient Address</label>
+              <input
+                type="text"
+                value={recipientAddress}
+                onChange={(e) => setRecipientAddress(e.target.value)}
+                placeholder="Enter recipient address"
+                className="w-full bg-gray-800 text-white p-3 rounded-md"
+              />
+            </div>
+            
+            <button 
+              onClick={handlePrediction}
+              className="w-full bg-red-500 hover:bg-red-600 text-white py-3 rounded-md transition-colors"
+            >
+              Detect Fraud Risk
+            </button>
+          </div>
+        </div>
 
-            {/* Right Section */}
-            <div className="md:col-span-4 space-y-6">
-              <div className="bg-gray-900 rounded-xl p-6">
-                <div className="text-center">
-                  <div className="w-20 h-20 bg-gray-800 rounded-full flex items-center justify-center mx-auto mb-4">
-                    <span className="text-2xl font-bold text-red-500">
-                      {user?.email?.[0]?.toUpperCase() || 'U'}
-                    </span>
-                  </div>
-                  <h2 className="font-bold text-xl text-white mb-1">{user?.user_metadata?.name || "User"}</h2>
-                  <p className="text-gray-400 text-sm">{user?.email || "No email found"}</p>
-                </div>
-              </div>
+        {/* Right Column - User Info & Quick Actions */}
+        <div className="w-96 space-y-6">
+          {/* User Profile Card */}
+          <div className="bg-gray-900 rounded-lg p-6 text-center">
+            <div className="w-24 h-24 bg-red-500 rounded-full flex items-center justify-center text-3xl font-bold mx-auto mb-4">
+              {user?.email?.[0]?.toUpperCase() || 'U'}
+            </div>
+            <h2 className="text-xl font-bold">User</h2>
+            <p className="text-gray-400 text-sm">{user?.email || "No email found"}</p>
+          </div>
 
-              {/* Quick Actions */}
-              <div className="bg-gray-900 rounded-xl p-6">
-                <h3 className="font-bold text-white mb-4">Quick Actions</h3>
-                <div className="space-y-2">
-                  <button 
-                    onClick={() => navigate('/transaction-history')}
-                    className="w-full flex items-center space-x-2 px-4 py-2 rounded-lg hover:bg-gray-800 transition-colors text-white"
-                  >
-                    <History className="h-5 w-5" />
-                    <span>DB Transaction History</span>
-                  </button>
-                  <button 
-                    onClick={() => navigate('/blockchain-history')}
-                    className="w-full flex items-center space-x-2 px-4 py-2 rounded-lg hover:bg-gray-800 transition-colors text-white"
-                  >
-                    <Anchor className="h-5 w-5" />
-                    <span>Blockchain Transaction Log</span>
-                  </button>
-                  <button 
-                    onClick={() => navigate('/universal-log')}
-                    className="w-full flex items-center space-x-2 px-4 py-2 rounded-lg hover:bg-gray-800 transition-colors text-white"
-                  >
-                    <Database className="h-5 w-5 text-purple-400" />
-                    <span>Universal Transaction Log</span>
-                  </button>
-                  <button 
-                    onClick={() => navigate('/security-settings')}
-                    className="w-full flex items-center space-x-2 px-4 py-2 rounded-lg hover:bg-gray-800 transition-colors text-white"
-                  >
-                    <Shield className="h-5 w-5" />
-                    <span>Security Settings</span>
-                  </button>
-                </div>
-              </div>
+          {/* Quick Actions */}
+          <div className="bg-gray-900 rounded-lg p-6">
+            <h2 className="text-xl font-bold mb-4">Quick Actions</h2>
+            <div className="space-y-3">
+              <Link to="/transaction-history" className="flex items-center p-3 hover:bg-gray-800 rounded-md">
+                <History className="h-5 w-5 mr-3 text-blue-400" />
+                <span>DB Transaction History</span>
+              </Link>
+              
+              <Link to="/blockchain-history" className="flex items-center p-3 hover:bg-gray-800 rounded-md">
+                <Anchor className="h-5 w-5 mr-3 text-blue-400" />
+                <span>Blockchain Transaction Log</span>
+              </Link>
+              
+              <Link to="/universal-log" className="flex items-center p-3 hover:bg-gray-800 rounded-md">
+                <Database className="h-5 w-5 mr-3 text-blue-400" />
+                <span>Universal Transaction Log</span>
+              </Link>
             </div>
           </div>
         </div>
-      </main>
+      </div>
     </div>
   );
 };

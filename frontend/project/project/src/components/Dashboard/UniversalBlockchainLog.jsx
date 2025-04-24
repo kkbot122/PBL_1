@@ -70,7 +70,7 @@ const UniversalBlockchainLog = () => {
                 <ArrowLeft className="h-5 w-5 text-white" />
               </button>
               <h1 className="text-xl font-bold flex items-center">
-                <Database className="h-5 w-5 mr-2 text-purple-400"/>
+                <Database className="h-5 w-5 mr-2 text-blue-400"/>
                 Universal Transaction Log
               </h1>
             </div>
