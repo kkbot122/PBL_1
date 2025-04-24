@@ -608,18 +608,62 @@ app.post('/api/transactions/save', async (req, res) => {
   }
 });
 
+// REORDERED: Universal Log endpoint now comes BEFORE the user-specific one
+// NEW: Endpoint to Get ALL Transaction History (Universal Log) - SIMPLIFIED
+app.get('/api/transactions/history/all', async (req, res) => {
+  console.log("==== RECEIVED REQUEST for /api/transactions/history/all (SIMPLIFIED HANDLER) ====");
+  try {
+    // --- Temporarily removed all search logic --- 
+    // const { q } = req.query; 
+    // let filter = {};
+    // if (q) { ... build filter ... }
+
+    // Fetch ALL transactions without any filter
+    const transactions = await Transaction.find({}) // Find all
+                                          .sort({ timestamp: -1 })
+                                          .limit(200); 
+
+    console.log(`Fetched all transactions (unfiltered). Count: ${transactions.length}`);
+    res.json({ success: true, transactions });
+
+  } catch (error) {
+    console.error("==== CAUGHT ERROR in /api/transactions/history/all (SIMPLIFIED HANDLER) ====");
+    console.error("Detailed error fetching all transaction history:", error);
+    let errorMessage = 'Failed to fetch universal transaction history.';
+    if (error.name === 'MongoError' || error.name === 'MongooseError') {
+        errorMessage = 'Database query failed while fetching universal history.';
+    }
+    res.status(500).json({ success: false, error: errorMessage }); 
+  }
+});
+
 // Endpoint to Get Transaction History for a User (Supabase Auth)
 // Expects supabaseUserId as a query parameter, e.g., /api/transactions/history?userId=xxx
 app.get('/api/transactions/history', async (req, res) => {
   try {
-    const { userId } = req.query; // Get Supabase user ID from query param
+    const { userId, riskLevel, address, startDate, endDate } = req.query; // Get Supabase user ID and potential filters
     if (!userId) {
-      return res.status(400).json({ success: false, error: 'Missing required userId query parameter' });
+      // This check is still valid for this specific endpoint
+      return res.status(400).json({ success: false, error: 'Missing required userId query parameter' }); 
     }
 
-    const transactions = await Transaction.find({ supabaseUserId: userId }).sort({ timestamp: -1 }); // Fetch by supabaseUserId
+    // Build filter object
+    const filter = { supabaseUserId: userId };
+    if (riskLevel && riskLevel !== 'all') filter.riskLevel = riskLevel; 
+    if (address) filter.recipientAddress = { $regex: address, $options: 'i' };
+    if (startDate || endDate) {
+      filter.timestamp = {};
+      if (startDate) filter.timestamp.$gte = new Date(startDate);
+      if (endDate) {
+         const endOfDay = new Date(endDate);
+         endOfDay.setDate(endOfDay.getDate() + 1);
+         filter.timestamp.$lt = endOfDay; 
+      }      
+    }
+
+    const transactions = await Transaction.find(filter).sort({ timestamp: -1 }); 
     
-    console.log(`Fetched history for Supabase User: ${userId}, Count: ${transactions.length}`);
+    console.log(`Fetched history for Supabase User: ${userId}, Count: ${transactions.length}, Filters: ${JSON.stringify(filter)}`);
     res.json({ success: true, transactions });
 
   } catch (error) {
@@ -632,15 +676,26 @@ app.get('/api/transactions/history', async (req, res) => {
 app.get('/api/blockchain/history', async (req, res) => {
   console.log("Fetching blockchain history");
   try {
-    // Get wallet address from private key - this is where transactions are recorded
-    const privateKey = process.env.PRIVATE_KEY;
-    if (!privateKey) {
-      return res.status(500).json({ success: false, error: 'Private key not configured on backend.' });
+    const { address, riskLevel, startDate, endDate } = req.query;
+    let targetAddress = address; // Use address from query if provided
+
+    // If no address is provided in query, get the default backend wallet address
+    if (!targetAddress) {
+      const privateKey = process.env.PRIVATE_KEY;
+      if (!privateKey) {
+        return res.status(500).json({ success: false, error: 'Backend private key not configured.' });
+      }
+      const wallet = new ethers.Wallet(privateKey);
+      targetAddress = wallet.address;
+      console.log(`No address provided, using backend wallet address: ${targetAddress}`);
+    } else {
+      console.log(`Fetching history for provided address: ${targetAddress}`);
     }
-    const wallet = new ethers.Wallet(privateKey);
     
-    // Using the wallet address to get transaction history from the blockchain
-    const result = await blockchainService.getTransactionHistory(wallet.address);
+    // Fetch ALL transactions for the target address from the blockchain service
+    // Note: Applying a reasonable limit here if the service supports it would be good practice.
+    // Assuming getTransactionHistory fetches all for now.
+    const result = await blockchainService.getTransactionHistory(targetAddress);
     
     if (!result.success) {
       return res.status(400).json({
@@ -648,11 +703,40 @@ app.get('/api/blockchain/history', async (req, res) => {
         error: result.error || "Error fetching blockchain transaction history"
       });
     }
+
+    // --- Apply Filters Post-Fetch ---
+    let filteredTransactions = result.transactions;
+    console.log(`Initial transactions fetched from blockchain service: ${filteredTransactions.length}`);
+
+    if (riskLevel && riskLevel !== 'all') {
+      filteredTransactions = filteredTransactions.filter(tx => tx.riskLevel === riskLevel);
+    }
     
+    // Convert date strings to Date objects for comparison
+    let start = startDate ? new Date(startDate) : null;
+    let end = endDate ? new Date(endDate) : null;
+    
+    if (start || end) {
+      // Adjust end date to be inclusive (end of the day)
+      if (end) {
+         end.setHours(23, 59, 59, 999);
+      }
+      
+      filteredTransactions = filteredTransactions.filter(tx => {
+        const txDate = new Date(tx.timestamp * 1000); // Assuming timestamp is in seconds
+        const afterStart = start ? txDate >= start : true;
+        const beforeEnd = end ? txDate <= end : true;
+        return afterStart && beforeEnd;
+      });
+    }
+    // --- End Filter Logic ---
+
+    console.log(`Transactions after filtering: ${filteredTransactions.length}`);
+
     res.json({
       success: true,
-      transactions: result.transactions,
-      address: wallet.address
+      transactions: filteredTransactions,
+      address: targetAddress // Return the address used for fetching
     });
   } catch (error) {
     console.error("Error fetching blockchain history:", error);

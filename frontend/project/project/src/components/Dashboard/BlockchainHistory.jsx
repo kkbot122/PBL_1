@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { ArrowLeft, History, AlertTriangle, Loader, Anchor } from 'lucide-react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { ArrowLeft, Filter, AlertTriangle, Loader, Anchor, RefreshCw } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import axios from 'axios';
@@ -7,163 +7,290 @@ import axios from 'axios';
 // Component to display blockchain transaction history
 const BlockchainHistory = () => {
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const { user } = useAuth(); // Keep user auth if needed for context, but not directly for filtering
   const [transactions, setTransactions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [walletAddress, setWalletAddress] = useState('Loading...'); // Updated initial state
+  const [walletAddress, setWalletAddress] = useState('Loading...');
 
-  useEffect(() => {
-    let isMounted = true; // Prevent state update on unmounted component
+  // Filter State
+  const [filters, setFilters] = useState({
+    riskLevel: 'all', 
+    address: '', // Allow filtering by specific address OR use backend default
+    startDate: '',
+    endDate: ''
+  });
+  const [showFilters, setShowFilters] = useState(false);
+
+  const fetchBlockchainHistory = useCallback(async () => {
     setLoading(true);
     setError(null);
-
-    const fetchBlockchainHistory = async () => {
-      try {
-        // Direct call to API endpoint
-        console.log('Fetching blockchain history data...');
-        const response = await axios.get('http://localhost:4000/api/blockchain/wallet-address');
-        
-        if (response.data.success) {
-          // Get wallet address
-          const address = response.data.address;
-          if (isMounted) {
-            setWalletAddress(address);
-            console.log('Wallet address:', address);
-          }
-          
-          // Now try to get the transaction history
-          try {
-            const historyResponse = await axios.get(`http://localhost:4000/api/blockchain/history`);
-            
-            if (historyResponse.data.success) {
-              if (isMounted) {
-                console.log('Transaction history:', historyResponse.data.transactions);
-                setTransactions(historyResponse.data.transactions || []);
-              }
-            } else {
-              console.warn('History response unsuccessful:', historyResponse.data);
-              if (isMounted) {
-                setError(historyResponse.data.error || "Failed to fetch transaction history");
-              }
-            }
-          } catch (historyError) {
-            console.error('Error fetching transaction history:', historyError);
-            if (isMounted) {
-              setError(historyError.message || "Failed to fetch transaction history");
-            }
-          }
-        } else {
-          throw new Error(response.data.error || 'Failed to fetch wallet address');
-        }
-      } catch (err) {
-        console.error("Error in blockchain history fetch:", err);
-        if (isMounted) {
-          setError(err.message || "An error occurred while fetching blockchain data.");
-        }
-      } finally {
-        if (isMounted) {
-          setLoading(false);
-        }
+    try {
+      // Build query parameters from filter state
+      const params = new URLSearchParams();
+      // Only add address if user explicitly entered one in the filter
+      if (filters.address) {
+        params.append('address', filters.address); 
       }
-    };
+      if (filters.riskLevel && filters.riskLevel !== 'all') {
+        params.append('riskLevel', filters.riskLevel);
+      }
+      if (filters.startDate) {
+        params.append('startDate', filters.startDate);
+      }
+      if (filters.endDate) {
+        params.append('endDate', filters.endDate);
+      }
 
-    fetchBlockchainHistory();
+      const endpoint = `http://localhost:4000/api/blockchain/history?${params.toString()}`;
+      console.log("Fetching blockchain history from:", endpoint); // Log endpoint
+      const response = await axios.get(endpoint);
 
-    // Cleanup function
-    return () => {
-      isMounted = false;
-    };
-  }, []); // Fetch only once on mount
+      if (response.data.success) {
+        setTransactions(response.data.transactions);
+        // Set the wallet address displayed (either the filtered one or the backend default)
+        setWalletAddress(response.data.address || 'N/A'); 
+      } else {
+        setError(response.data.error || "Failed to fetch blockchain history");
+        setWalletAddress('Error');
+      }
+    } catch (err) {
+      console.error("Error fetching blockchain history:", err);
+      setError(err.response?.data?.error || "An error occurred while fetching history.");
+      setWalletAddress('Error');
+    } finally {
+      setLoading(false);
+    }
+  }, [filters]); // Re-run fetchHistory when filters change
 
-  const formatDate = (dateString) => {
-    return new Date(dateString).toLocaleString();
+  useEffect(() => {
+    fetchBlockchainHistory(); // Initial fetch
+  }, [fetchBlockchainHistory]); // Use fetchHistory as dependency
+
+ const handleFilterChange = (e) => {
+    const { name, value } = e.target;
+    setFilters(prevFilters => ({
+      ...prevFilters,
+      [name]: value
+    }));
+  };
+
+  const applyFilters = () => {
+    fetchBlockchainHistory(); // Fetch data with the current filters
+  };
+
+  const resetFilters = () => {
+    setFilters({ riskLevel: 'all', address: '', startDate: '', endDate: '' });
+    // Refetch will be triggered by useEffect due to filter state change
+  };
+
+
+  const formatDate = (unixTimestamp) => {
+    if (!unixTimestamp) return 'N/A';
+    try {
+      // Blockchain timestamps are often in seconds, convert to milliseconds
+      return new Date(unixTimestamp * 1000).toLocaleString(); 
+    } catch (e) {
+      return 'Invalid Date';
+    }
   };
 
   const getRiskLevelColor = (level) => {
-    const colors = {
-      Low: "text-green-500",
-      Medium: "text-yellow-500",
-      High: "text-red-500",
-      Critical: "text-red-700"
-    };
-    return colors[level] || "text-gray-500";
+     const colors = {
+      'Low': "text-green-400",
+      'Low-Medium': "text-blue-400",
+      'Medium': "text-yellow-400",
+      'Medium-High': "text-orange-400",
+      'High': "text-red-400"
+    }; // Brighter colors for dark background
+    return colors[level] || "text-gray-400";
   };
+
+  // Function to shorten addresses/hashes
+  const shortenAddress = (addr) => {
+    if (!addr || addr.length < 10) return addr;
+    return `${addr.substring(0, 6)}...${addr.substring(addr.length - 4)}`;
+  }
 
   return (
     <div className="min-h-screen bg-black text-white">
-      <nav className="border-b border-gray-800 bg-gray-900/50 backdrop-blur-lg fixed w-full z-10">
-        <div className="container mx-auto px-4 py-4 flex justify-between items-center">
-          <div className="flex items-center space-x-4">
-            <button 
-              onClick={() => navigate('/dashboard')}
-              className="p-2 hover:bg-gray-800 rounded-lg transition-colors"
-            >
-              <ArrowLeft className="h-5 w-5 text-white" />
-            </button>
-            <h1 className="text-xl font-bold">Blockchain Transaction Log</h1>
-          </div>
-           <span className="text-xs text-gray-400 font-mono">Log Address: {walletAddress}</span>
-        </div>
+      <nav className="border-b border-gray-800 bg-gray-900/50 backdrop-blur-lg sticky top-0 z-10">
+        <div className="container mx-auto px-4 py-4">
+           <div className="flex items-center justify-between">
+             <div className="flex items-center space-x-4">
+               <button 
+                 onClick={() => navigate('/dashboard')}
+                 className="p-2 hover:bg-gray-800 rounded-lg transition-colors"
+               >
+                 <ArrowLeft className="h-5 w-5 text-white" />
+               </button>
+               <div className="flex items-center">
+                 <Anchor className="h-5 w-5 mr-2 text-cyan-400"/>
+                 <h1 className="text-xl font-bold">Blockchain Transaction Log</h1>
+               </div>
+             </div>
+             <div className="flex items-center space-x-4">
+                 {/* Display the address being viewed */}
+                 <span className="text-xs text-gray-400 font-mono hidden md:block"
+                   title={walletAddress !== 'Loading...' && walletAddress !== 'Error' ? walletAddress : ''}
+                 >
+                   Log Address: {shortenAddress(walletAddress)}
+                 </span>
+                 <button 
+                   onClick={() => setShowFilters(!showFilters)}
+                   className={`p-2 rounded-lg transition-colors ${showFilters ? 'bg-cyan-600 text-white' : 'bg-gray-800 hover:bg-cyan-700'}`}
+                   title={showFilters ? "Hide Filters" : "Show Filters"}
+                 >
+                   <Filter className="h-5 w-5" />
+                 </button>
+             </div>
+           </div>
+         </div>
       </nav>
 
-      <main className="pt-20 pb-8 px-4">
-        <div className="container mx-auto max-w-4xl">
-          <div className="bg-gray-900 rounded-xl p-8">
+       {/* Filter Section */}
+      {showFilters && (
+        <div className="bg-gray-800 py-4 px-4 sticky top-[65px] z-9 border-b border-gray-700">
+          <div className="container mx-auto">
+             <div className="grid grid-cols-1 md:grid-cols-5 gap-4 items-end">
+               {/* Risk Level Filter */}
+               <div>
+                <label htmlFor="riskLevel" className="block text-xs font-medium text-gray-400 mb-1">Risk Level</label>
+                <select
+                  id="riskLevel"
+                  name="riskLevel"
+                  value={filters.riskLevel}
+                  onChange={handleFilterChange}
+                  className="w-full bg-gray-700 text-white rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-cyan-500"
+                >
+                  <option value="all">All Levels</option>
+                  <option value="Low">Low</option>
+                  <option value="Low-Medium">Low-Medium</option>
+                  <option value="Medium">Medium</option>
+                  <option value="Medium-High">Medium-High</option>
+                  <option value="High">High</option>
+                </select>
+               </div>
+
+               {/* Address Filter - Optional, defaults to backend wallet if empty */}
+               <div>
+                <label htmlFor="address" className="block text-xs font-medium text-gray-400 mb-1">View Specific Address</label>
+                <input
+                  type="text"
+                  id="address"
+                  name="address"
+                  value={filters.address}
+                  onChange={handleFilterChange}
+                  placeholder="(Defaults to backend wallet)"
+                  className="w-full bg-gray-700 text-white rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-cyan-500"
+                />
+               </div>
+
+               {/* Start Date Filter */}
+               <div>
+                <label htmlFor="startDate" className="block text-xs font-medium text-gray-400 mb-1">Start Date</label>
+                <input
+                  type="date"
+                  id="startDate"
+                  name="startDate"
+                  value={filters.startDate}
+                  onChange={handleFilterChange}
+                  className="w-full bg-gray-700 text-white rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-cyan-500"
+                />
+               </div>
+
+                {/* End Date Filter */}
+               <div>
+                <label htmlFor="endDate" className="block text-xs font-medium text-gray-400 mb-1">End Date</label>
+                <input
+                  type="date"
+                  id="endDate"
+                  name="endDate"
+                  value={filters.endDate}
+                  onChange={handleFilterChange}
+                  className="w-full bg-gray-700 text-white rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-cyan-500"
+                />
+               </div>
+
+               {/* Action Buttons */}
+               <div className="flex space-x-2">
+                 <button
+                    onClick={applyFilters}
+                    className="flex-1 bg-cyan-600 hover:bg-cyan-700 text-white px-4 py-2 rounded-lg text-sm transition-colors"
+                  >
+                    Apply
+                  </button>
+                  <button
+                    onClick={resetFilters}
+                    className="p-2 bg-gray-600 hover:bg-gray-500 text-white rounded-lg transition-colors" 
+                    title="Reset Filters"
+                  >
+                    <RefreshCw className="h-4 w-4" />
+                  </button>
+               </div>
+             </div>
+          </div>
+        </div>
+      )}
+
+      <main className="pt-8 pb-8 px-4">
+        <div className="container mx-auto max-w-6xl"> 
+          <div className="bg-gray-900 rounded-xl p-6">
             {loading && (
               <div className="text-center py-12">
-                <Loader className="h-12 w-12 text-purple-500 animate-spin mx-auto mb-4" />
+                <Loader className="h-10 w-10 text-cyan-500 animate-spin mx-auto mb-4" />
                 <p className="text-gray-400">Loading blockchain log...</p>
               </div>
             )}
 
             {error && (
               <div className="text-center py-12 text-red-400">
-                <AlertTriangle className="h-12 w-12 text-red-500 mx-auto mb-4" />
-                <p className="font-semibold mb-2">Error Fetching Blockchain Log</p>
+                <AlertTriangle className="h-10 w-10 text-red-500 mx-auto mb-4" />
+                <p className="font-semibold mb-2">Error Fetching Log</p>
                 <p className="text-sm">{error}</p>
-                 <button
-                  onClick={() => navigate('/dashboard')}
+                <button
+                  onClick={fetchBlockchainHistory} // Allow retry
                   className="mt-6 bg-red-500 hover:bg-red-600 text-white px-6 py-2 rounded-lg transition-colors inline-flex items-center space-x-2"
                 >
-                  <span>Return to Dashboard</span>
+                  <RefreshCw className="h-4 w-4"/>
+                  <span>Retry</span>
                 </button>
               </div>
             )}
 
-            {!loading && !error && (!transactions || transactions.length === 0) && (
-              <div className="text-center py-12">
-                <div className="w-16 h-16 bg-gray-800 rounded-full flex items-center justify-center mx-auto mb-6">
-                  <Anchor className="h-8 w-8 text-gray-400" />
-                </div>
-                <h2 className="text-xl font-bold text-white mb-2">No On-Chain Logs Yet</h2>
-                <p className="text-gray-400 mb-8">
-                  Transactions logged to the blockchain will appear here.
-                </p>
-                 <button
-                  onClick={() => navigate('/dashboard')}
-                  className="bg-red-500 hover:bg-red-600 text-white px-6 py-3 rounded-lg transition-colors inline-flex items-center space-x-2"
-                >
-                  <span>Return to Dashboard</span>
-                </button>
+            {!loading && !error && transactions.length === 0 && (
+              <div className="text-center py-12 text-gray-500">
+                 <Anchor className="h-10 w-10 mx-auto mb-4" />
+                 <p>No blockchain transactions found for the selected address and filters.</p>
               </div>
             )}
 
-            {!loading && !error && transactions && transactions.length > 0 && (
-              <div className="space-y-4">
-                {transactions.map((tx, index) => (
-                  <div key={index} className="bg-gray-800 p-4 rounded-lg border border-gray-700">
-                    <div className="flex flex-wrap justify-between items-center mb-2">
-                      <span className={`font-bold text-lg ${getRiskLevelColor(tx.riskLevel)}`}>{tx.riskLevel} Risk</span>
-                      <span className="text-sm text-gray-400">{formatDate(tx.timestamp)}</span>
-                    </div>
-                    <div className="text-sm grid grid-cols-2 gap-x-4 gap-y-1 text-gray-300">
-                      <span>Amount (ETH):</span> <span className="text-white font-mono">{tx.amount}</span> 
-                      <span>Recipient:</span> <span className="text-white font-mono break-all">{tx.recipientAddress}</span>
-                      <span>Verified:</span> <span className={`font-mono ${tx.isVerified ? 'text-green-400' : 'text-red-400'}`}>{tx.isVerified ? 'Yes' : 'No'}</span>
-                    </div>
-                  </div>
-                ))}
+            {!loading && !error && transactions.length > 0 && (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm text-left text-gray-400">
+                  <thead className="text-xs text-gray-400 uppercase bg-gray-800">
+                    <tr>
+                      <th scope="col" className="px-4 py-3">Timestamp</th>
+                      <th scope="col" className="px-4 py-3">Recipient Address</th>
+                      <th scope="col" className="px-4 py-3">Amount</th>
+                      <th scope="col" className="px-4 py-3">Risk Level</th>
+                       {/* Maybe add Transaction Hash if available from service */}
+                       {/* <th scope="col" className="px-4 py-3">Tx Hash</th> */} 
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {transactions.map((tx, index) => (
+                      <tr key={index} className="border-b border-gray-700 hover:bg-gray-800/50">
+                        <td className="px-4 py-3 whitespace-nowrap">{formatDate(tx.timestamp)}</td>
+                        <td className="px-4 py-3 font-mono break-all" title={tx.recipient}>{shortenAddress(tx.recipient)}</td>
+                        <td className="px-4 py-3">{tx.amount || 'N/A'}</td>
+                        <td className={`px-4 py-3 font-semibold ${getRiskLevelColor(tx.riskLevel)}`}>{tx.riskLevel || 'N/A'}</td>
+                         {/* Render Tx Hash if available */}
+                         {/* <td className="px-4 py-3 font-mono break-all" title={tx.hash}>{shortenAddress(tx.hash)}</td> */} 
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
             )}
           </div>

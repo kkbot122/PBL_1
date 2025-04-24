@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { useAuth } from "../../contexts/AuthContext";
 import { useNavigate } from "react-router-dom";
-import { Wallet, Settings, LogOut, History, Shield, AlertTriangle, CheckCircle, Activity, Clock, TrendingUp, AlertOctagon, Save, Anchor } from "lucide-react";
+import { Wallet, Settings, LogOut, History, Shield, AlertTriangle, CheckCircle, Activity, Clock, TrendingUp, AlertOctagon, Save, Anchor, Database } from "lucide-react";
 import axios from "axios";
 import FraudDetectionDashboard from "./FraudDetectionDashboard";
 
@@ -297,6 +297,13 @@ const UserDashboard = () => {
                   >
                     <Anchor className="h-5 w-5" />
                     <span>Blockchain Transaction Log</span>
+                  </button>
+                  <button 
+                    onClick={() => navigate('/universal-log')}
+                    className="w-full flex items-center space-x-2 px-4 py-2 rounded-lg hover:bg-gray-800 transition-colors text-white"
+                  >
+                    <Database className="h-5 w-5 text-purple-400" />
+                    <span>Universal Transaction Log</span>
                   </button>
                   <button 
                     onClick={() => navigate('/security-settings')}
