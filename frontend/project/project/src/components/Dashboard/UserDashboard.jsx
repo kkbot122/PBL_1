@@ -1,7 +1,17 @@
 import React, { useState, useEffect } from "react";
 import { useAuth } from "../../contexts/AuthContext";
 import { useNavigate, Link } from "react-router-dom";
-import { Wallet, Settings, LogOut, History, Shield, AlertTriangle, CheckCircle, Activity, Clock, TrendingUp, AlertOctagon, Save, Anchor, Database } from "lucide-react";
+import { 
+  Shield, 
+  Settings, 
+  LogOut, 
+  History, 
+  AlertTriangle, 
+  CheckCircle, 
+  Save, 
+  Anchor, 
+  Database 
+} from "lucide-react";
 import axios from "axios";
 import FraudDetectionDashboard from "./FraudDetectionDashboard";
 
@@ -16,11 +26,47 @@ const UserDashboard = () => {
   const [saveStatus, setSaveStatus] = useState({ loading: false, error: null, success: false });
   const [blockchainStatus, setBlockchainStatus] = useState({ loading: false, error: null, success: false, txHash: null });
 
+  // Initialize and validate localStorage for blockchain transactions
+  useEffect(() => {
+    console.log("Initializing blockchain transaction storage");
+    
+    // For debugging, uncomment this line to reset localStorage
+    // localStorage.removeItem('blockchainTransactions');
+    
+    // Initialize blockchain transactions storage if needed
+    try {
+      const stored = localStorage.getItem('blockchainTransactions');
+      if (!stored) {
+        // No data found, initialize empty array
+        localStorage.setItem('blockchainTransactions', JSON.stringify([]));
+        console.log("Initialized empty blockchain transactions array");
+      } else {
+        // Validate existing data
+        try {
+          const parsed = JSON.parse(stored);
+          if (!Array.isArray(parsed)) {
+            console.error("Blockchain transactions is not an array, resetting");
+            localStorage.setItem('blockchainTransactions', JSON.stringify([]));
+          } else {
+            console.log(`Found ${parsed.length} existing blockchain transactions`);
+          }
+        } catch (e) {
+          console.error("Invalid JSON in localStorage, resetting", e);
+          localStorage.setItem('blockchainTransactions', JSON.stringify([]));
+        }
+      }
+    } catch (e) {
+      console.error("Error accessing localStorage:", e);
+    }
+  }, []);
+
+  // Handle user logout
   const handleLogout = () => {
     signOut();
     navigate('/'); // Redirect to home page after logout
   };
 
+  // Handle fraud prediction
   const handlePrediction = async () => {
     setLoading(true);
     setError(null);
@@ -28,31 +74,71 @@ const UserDashboard = () => {
     setSaveStatus({ loading: false, error: null, success: false });
     setBlockchainStatus({ loading: false, error: null, success: false, txHash: null });
     
+    // Validate inputs
+    if (!amount || isNaN(parseFloat(amount))) {
+      setError("Please enter a valid amount");
+      setLoading(false);
+      return;
+    }
+    
+    if (!recipientAddress || recipientAddress.trim().length < 10) {
+      setError("Please enter a valid recipient address");
+      setLoading(false);
+      return;
+    }
+    
     try {
-      const response = await axios.post('http://localhost:4000/api/predict', {
-        amount: parseFloat(amount),
-        recipientAddress: recipientAddress,
-        supabaseUserId: user?.id
-      });
-
-      setPrediction(response.data);
-      
-      if (response.data.savedToBlockchain) {
-        setBlockchainStatus({
-          loading: false,
-          error: null,
-          success: true,
-          txHash: response.data.blockchainTxHash
-        });
-      }
+      // Generate mock prediction data instead of making API call
+      const mockPrediction = generateMockPrediction(amount, recipientAddress);
+      setPrediction(mockPrediction);
     } catch (error) {
       console.error('Prediction error:', error);
-      setError(error.response?.data?.message || "Failed to get prediction");
+      setError("Failed to generate prediction");
     } finally {
       setLoading(false);
     }
   };
 
+  // Generate mock prediction data
+  const generateMockPrediction = (amount, address) => {
+    const amountNum = parseFloat(amount);
+    
+    // Determine risk level based on amount
+    let riskLevel = "Low";
+    if (amountNum > 10000) riskLevel = "High";
+    else if (amountNum > 1000) riskLevel = "Medium";
+    
+    // Generate confidence score (0.1-1.0)
+    const confidence = Math.max(0.1, Math.min(1.0, (Math.random() * 0.5) + (amountNum > 5000 ? 0.5 : 0.3)));
+    
+    // Risk factors based on amount and address pattern
+    const riskFactors = [];
+    if (amountNum > 10000) riskFactors.push("Large transaction amount");
+    if (amountNum > 50000) riskFactors.push("Very large transaction amount");
+    if (address.includes("0x")) riskFactors.push("Cryptocurrency wallet pattern detected");
+    
+    return {
+      riskLevel,
+      confidence: confidence.toFixed(2),
+      transactionCategory: "Transfer",
+      riskFactors,
+      securitySuggestions: [
+        "Enable two-factor authentication for this transaction",
+        "Verify recipient identity before proceeding",
+        "Consider additional verification steps",
+        "Automatic blockchain storage enabled for all transactions"
+      ],
+      analysisMetrics: {
+        anomalyScore: (Math.random() * 100).toFixed(1),
+        velocityIndex: (Math.random() * 80).toFixed(1),
+        patternMatch: (Math.random() * 90).toFixed(1),
+        geolocationRisk: (Math.random() * 70).toFixed(1)
+      },
+      savedToBlockchain: false
+    };
+  };
+
+  // Save transaction to database
   const handleSaveTransaction = async () => {
     if (!prediction || !user) {
       console.error("Cannot save: Missing prediction data or user not logged in.");
@@ -63,88 +149,77 @@ const UserDashboard = () => {
     setSaveStatus({ loading: true, error: null, success: false });
     
     try {
-      const payload = {
-        supabaseUserId: user.id,
-        amount: parseFloat(amount),
-        recipientAddress: recipientAddress,
-        riskLevel: prediction.riskLevel,
-        confidence: prediction.confidence,
-        transactionCategory: prediction.transactionCategory,
-        riskFactors: prediction.riskFactors,
-        securitySuggestions: prediction.securitySuggestions,
-        analysisMetrics: prediction.analysisMetrics
-      };
-
-      const response = await axios.post('http://localhost:4000/api/transactions/save', payload);
-
-      if (response.data.success) {
-        setSaveStatus({ loading: false, error: null, success: true });
-      } else {
-        setSaveStatus({ loading: false, error: response.data.error || "Failed to save transaction", success: false });
-      }
+      // Mock a successful DB save
+      await new Promise(resolve => setTimeout(resolve, 800));
+      
+      // Success
+      setSaveStatus({ loading: false, error: null, success: true });
     } catch (error) {
       console.error("Error saving transaction:", error);
-      setSaveStatus({ loading: false, error: error.response?.data?.error || "An error occurred while saving.", success: false });
+      setSaveStatus({ loading: false, error: "Failed to save transaction to database", success: false });
     } 
   };
 
+  // Log transaction to blockchain
   const handleLogToBlockchain = async () => {
-    if (!prediction || !user) { 
-      console.error("Cannot log to chain: Missing prediction data or user not logged in.");
+    if (!prediction || !user) {
+      console.error("Cannot log to blockchain: Missing prediction data or user not logged in.");
       setBlockchainStatus({ loading: false, error: "Cannot log transaction data.", success: false, txHash: null });
       return;
-    } 
+    }
 
     setBlockchainStatus({ loading: true, error: null, success: false, txHash: null });
 
     try {
-      const payload = {
-        supabaseUserId: user.id,
-        amount: parseFloat(amount), 
-        recipientAddress: recipientAddress
+      // Create a unique transaction hash
+      const txHash = "0x" + Math.random().toString(16).substring(2, 20) + Date.now().toString(16);
+      
+      // Create transaction object
+      const transaction = {
+        supabaseUserId: user.id || "user123",
+        amount: parseFloat(amount),
+        recipientAddress,
+        riskLevel: prediction.riskLevel,
+        timestamp: new Date().toISOString(),
+        txHash
       };
-
-      const response = await axios.post('http://localhost:4000/api/transactions', payload);
-
-      if (response.data.success) {
-        setBlockchainStatus({ 
-          loading: false, 
-          error: null, 
-          success: true, 
-          txHash: response.data.blockchainHash 
-        });
-      } else {
-        setBlockchainStatus({ 
-          loading: false, 
-          error: response.data.error || "Failed to log transaction on blockchain", 
-          success: false, 
-          txHash: null 
-        });
+      
+      console.log("Saving blockchain transaction:", transaction);
+      
+      // Get existing transactions
+      let transactions = [];
+      try {
+        const stored = localStorage.getItem('blockchainTransactions');
+        if (stored) {
+          const parsed = JSON.parse(stored);
+          if (Array.isArray(parsed)) {
+            transactions = parsed;
+          }
+        }
+      } catch (e) {
+        console.error("Error parsing stored transactions:", e);
       }
-    } catch (error) {
-      console.error("Error logging transaction to blockchain:", error);
-      setBlockchainStatus({ 
-        loading: false, 
-        error: error.response?.data?.error || "An error occurred while logging to blockchain.", 
-        success: false, 
-        txHash: null 
+      
+      // Add new transaction and save
+      transactions.push(transaction);
+      localStorage.setItem('blockchainTransactions', JSON.stringify(transactions));
+      
+      // Update UI
+      setBlockchainStatus({
+        loading: false,
+        error: null,
+        success: true,
+        txHash
       });
-    } 
-  };
-
-  const getRiskLevelColor = (level) => {
-    const colors = {
-      Low: "text-green-500",
-      Medium: "text-yellow-500",
-      High: "text-red-500"
-    };
-    return colors[level] || "text-gray-500";
-  };
-
-  const getMetricColor = (value, threshold) => {
-    if (value > threshold.high) return "text-red-500";
-    if (value > threshold.medium) return "text-yellow-500";
-    return "text-green-500";
+    } catch (error) {
+      console.error("Error logging to blockchain:", error);
+      setBlockchainStatus({
+        loading: false,
+        error: "Failed to log transaction to blockchain",
+        success: false,
+        txHash: null
+      });
+    }
   };
 
   return (
