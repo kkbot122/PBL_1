@@ -2,7 +2,6 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { ArrowLeft, Filter, AlertTriangle, Loader, RefreshCw } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
-import axios from 'axios';
 
 const TransactionHistory = () => {
   const navigate = useNavigate();
@@ -13,14 +12,15 @@ const TransactionHistory = () => {
 
   // Filter State
   const [filters, setFilters] = useState({
-    riskLevel: 'all', // 'all', 'Low', 'Low-Medium', 'Medium', 'Medium-High', 'High'
+    riskLevel: 'all',
     address: '',
     startDate: '',
     endDate: ''
   });
   const [showFilters, setShowFilters] = useState(false);
 
-  const fetchHistory = useCallback(async () => {
+  // Fetch transaction history from localStorage
+  const fetchHistory = useCallback(() => {
     if (!user) {
       setLoading(false);
       setError("User not found. Please log in.");
@@ -29,31 +29,69 @@ const TransactionHistory = () => {
 
     setLoading(true);
     setError(null);
+    
     try {
-      // Build query parameters from filter state
-      const params = new URLSearchParams({ userId: user.id });
+      // Get transactions from localStorage
+      let dbTransactions = [];
+      try {
+        const stored = localStorage.getItem('dbTransactions');
+        if (stored) {
+          const parsed = JSON.parse(stored);
+          if (Array.isArray(parsed)) {
+            dbTransactions = parsed;
+          } else {
+            console.error("DB transactions is not an array, resetting");
+            localStorage.setItem('dbTransactions', JSON.stringify([]));
+          }
+        } else {
+          // Initialize localStorage if it doesn't exist
+          localStorage.setItem('dbTransactions', JSON.stringify([]));
+        }
+      } catch (e) {
+        console.error("Error parsing transactions from localStorage:", e);
+        localStorage.setItem('dbTransactions', JSON.stringify([]));
+      }
+      
+      // Apply filters
+      let filteredTransactions = dbTransactions;
+      
+      // Filter by risk level
       if (filters.riskLevel && filters.riskLevel !== 'all') {
-        params.append('riskLevel', filters.riskLevel);
+        filteredTransactions = filteredTransactions.filter(tx => 
+          tx.riskLevel === filters.riskLevel
+        );
       }
+      
+      // Filter by address
       if (filters.address) {
-        params.append('address', filters.address);
+        const addressLower = filters.address.toLowerCase();
+        filteredTransactions = filteredTransactions.filter(tx => 
+          tx.recipientAddress && tx.recipientAddress.toLowerCase().includes(addressLower)
+        );
       }
+      
+      // Filter by date range
       if (filters.startDate) {
-        params.append('startDate', filters.startDate);
+        const startDate = new Date(filters.startDate);
+        filteredTransactions = filteredTransactions.filter(tx => {
+          const txDate = new Date(tx.timestamp);
+          return txDate >= startDate;
+        });
       }
+      
       if (filters.endDate) {
-        params.append('endDate', filters.endDate);
+        const endDate = new Date(filters.endDate);
+        endDate.setHours(23, 59, 59, 999); // End of the day
+        filteredTransactions = filteredTransactions.filter(tx => {
+          const txDate = new Date(tx.timestamp);
+          return txDate <= endDate;
+        });
       }
-
-      const response = await axios.get(`http://localhost:4000/api/transactions/history?${params.toString()}`);
-      if (response.data.success) {
-        setTransactions(response.data.transactions);
-      } else {
-        setError(response.data.error || "Failed to fetch history");
-      }
+      
+      setTransactions(filteredTransactions);
     } catch (err) {
       console.error("Error fetching transaction history:", err);
-      setError(err.response?.data?.error || "An error occurred while fetching history.");
+      setError("An error occurred while fetching history.");
     } finally {
       setLoading(false);
     }
@@ -93,17 +131,15 @@ const TransactionHistory = () => {
   const getRiskLevelColor = (level) => {
      const colors = {
       'Low': "text-green-400",
-      'Low-Medium': "text-blue-400",
       'Medium': "text-yellow-400",
-      'Medium-High': "text-orange-400",
       'High': "text-red-400"
-    }; // Brighter colors for dark background
+    };
     return colors[level] || "text-gray-400";
   };
 
   return (
-    <div className="min-h-screen bg-black text-white">
-      <nav className="border-b border-gray-800 bg-gray-900/50 backdrop-blur-lg sticky top-0 z-10">
+    <div className="min-h-screen bg-[#0f172a] text-white">
+      <nav className="border-b border-gray-800 bg-[#0f172a] sticky top-0 z-10">
         <div className="container mx-auto px-4 py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-4">
@@ -113,11 +149,11 @@ const TransactionHistory = () => {
               >
                 <ArrowLeft className="h-5 w-5 text-white" />
               </button>
-              <h1 className="text-xl font-bold">My Transaction History</h1>
+              <h1 className="text-xl font-bold">DB Transaction History</h1>
             </div>
             <button 
               onClick={() => setShowFilters(!showFilters)}
-              className={`p-2 rounded-lg transition-colors ${showFilters ? 'bg-red-600 text-white' : 'bg-gray-800 hover:bg-red-700'}`}
+              className={`p-2 rounded-lg transition-colors ${showFilters ? 'bg-red-600 text-white' : 'bg-[#1e293b] hover:bg-red-700'}`}
               title={showFilters ? "Hide Filters" : "Show Filters"}
             >
               <Filter className="h-5 w-5" />
@@ -128,7 +164,7 @@ const TransactionHistory = () => {
 
       {/* Filter Section */}
       {showFilters && (
-        <div className="bg-gray-800 py-4 px-4 sticky top-[65px] z-9 border-b border-gray-700">
+        <div className="bg-[#1e293b] py-4 px-4 sticky top-[65px] z-9 border-b border-gray-700">
           <div className="container mx-auto">
              <div className="grid grid-cols-1 md:grid-cols-5 gap-4 items-end">
                {/* Risk Level Filter */}
@@ -139,13 +175,11 @@ const TransactionHistory = () => {
                   name="riskLevel"
                   value={filters.riskLevel}
                   onChange={handleFilterChange}
-                  className="w-full bg-gray-700 text-white rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-red-500"
+                  className="w-full bg-[#0f172a] text-white rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-red-500"
                 >
                   <option value="all">All Levels</option>
                   <option value="Low">Low</option>
-                  <option value="Low-Medium">Low-Medium</option>
                   <option value="Medium">Medium</option>
-                  <option value="Medium-High">Medium-High</option>
                   <option value="High">High</option>
                 </select>
                </div>
@@ -160,7 +194,7 @@ const TransactionHistory = () => {
                   value={filters.address}
                   onChange={handleFilterChange}
                   placeholder="Enter address..."
-                  className="w-full bg-gray-700 text-white rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-red-500"
+                  className="w-full bg-[#0f172a] text-white rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-red-500"
                 />
                </div>
 
@@ -173,7 +207,7 @@ const TransactionHistory = () => {
                   name="startDate"
                   value={filters.startDate}
                   onChange={handleFilterChange}
-                  className="w-full bg-gray-700 text-white rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-red-500"
+                  className="w-full bg-[#0f172a] text-white rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-red-500"
                 />
                </div>
 
@@ -186,7 +220,7 @@ const TransactionHistory = () => {
                   name="endDate"
                   value={filters.endDate}
                   onChange={handleFilterChange}
-                  className="w-full bg-gray-700 text-white rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-red-500"
+                  className="w-full bg-[#0f172a] text-white rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-red-500"
                 />
                </div>
 
@@ -213,7 +247,7 @@ const TransactionHistory = () => {
 
       <main className="pt-8 pb-8 px-4">
         <div className="container mx-auto max-w-6xl"> 
-          <div className="bg-gray-900 rounded-xl p-6">
+          <div className="bg-[#1e293b] rounded-xl p-6">
             {loading && (
               <div className="text-center py-12">
                 <Loader className="h-10 w-10 text-red-500 animate-spin mx-auto mb-4" />
@@ -239,38 +273,49 @@ const TransactionHistory = () => {
             {!loading && !error && transactions.length === 0 && (
               <div className="text-center py-12 text-gray-500">
                 <p>No transactions found for the selected filters.</p>
+                <p className="mt-2 text-sm">Try saving a transaction from the dashboard first.</p>
               </div>
             )}
 
             {!loading && !error && transactions.length > 0 && (
                <div className="overflow-x-auto">
                 <table className="w-full text-sm text-left text-gray-400">
-                  <thead className="text-xs text-gray-400 uppercase bg-gray-800">
+                  <thead className="text-xs text-gray-400 uppercase bg-[#151f38]">
                     <tr>
                       <th scope="col" className="px-4 py-3">Timestamp</th>
                       <th scope="col" className="px-4 py-3">Recipient Address</th>
                       <th scope="col" className="px-4 py-3">Amount</th>
                       <th scope="col" className="px-4 py-3">Risk Level</th>
-                      <th scope="col" className="px-4 py-3">Confidence</th>
-                      <th scope="col" className="px-4 py-3">Category</th>
-                      <th scope="col" className="px-4 py-3">Blockchain Hash</th>
+                      <th scope="col" className="px-4 py-3">Status</th>
                     </tr>
                   </thead>
-                  <tbody>
-                    {transactions.map((tx) => (
-                      <tr key={tx._id} className="border-b border-gray-700 hover:bg-gray-800/50">
-                        <td className="px-4 py-3 whitespace-nowrap">{formatDate(tx.timestamp)}</td>
-                        <td className="px-4 py-3 font-mono break-all">{tx.recipientAddress}</td>
-                        <td className="px-4 py-3">{tx.amount?.toFixed(2) || 'N/A'}</td>
-                        <td className={`px-4 py-3 font-semibold ${getRiskLevelColor(tx.riskLevel)}`}>{tx.riskLevel}</td>
-                        <td className="px-4 py-3">{tx.confidence || 'N/A'}</td>
-                        <td className="px-4 py-3">{tx.transactionCategory || 'N/A'}</td>
-                        <td className="px-4 py-3 font-mono break-all">{tx.blockchainHash || 'N/A'}</td>
+                  <tbody className="divide-y divide-gray-800">
+                    {transactions.map((transaction, index) => (
+                      <tr key={index} className="hover:bg-[#0f172a]">
+                        <td className="px-4 py-3 whitespace-nowrap">
+                          {formatDate(transaction.timestamp)}
+                        </td>
+                        <td className="px-4 py-3 font-mono break-all">
+                          {transaction.recipientAddress}
+                        </td>
+                        <td className="px-4 py-3">
+                          {typeof transaction.amount === 'number' ? transaction.amount.toLocaleString() : transaction.amount}
+                        </td>
+                        <td className="px-4 py-3">
+                          <span className={`font-semibold ${getRiskLevelColor(transaction.riskLevel)}`}>
+                            {transaction.riskLevel}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3">
+                          <span className="px-2 py-1 rounded-full text-xs font-medium bg-green-900/50 text-green-400">
+                            Saved
+                          </span>
+                        </td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
-               </div>
+              </div>
             )}
           </div>
         </div>

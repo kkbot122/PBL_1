@@ -9,7 +9,6 @@ import Pricing from './pages/Pricing';
 import UserDashboard from './components/Dashboard/UserDashboard';
 import BlockchainHistory from './components/Dashboard/BlockchainHistory';
 import TransactionHistory from './components/Dashboard/TransactionHistory';
-import UniversalBlockchainLog from './components/Dashboard/UniversalBlockchainLog';
 import './index.css';
 
 function App() {
@@ -20,7 +19,6 @@ function App() {
       <Route path="/signup" element={<><Navbar /><Signup /></>} />
       <Route path="/contact" element={<><Navbar /><Contact /></>} />
       <Route path="/pricing" element={<><Navbar /><Pricing /></>} />
-      <Route path="/universal-log" element={<UniversalBlockchainLog />} />
       <Route path="/dashboard" element={<UserDashboard />} />
       <Route path="/blockchain-history" element={<BlockchainHistory />} />
       <Route path="/transaction-history" element={<TransactionHistory />} />

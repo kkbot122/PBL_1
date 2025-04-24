@@ -9,8 +9,7 @@ import {
   AlertTriangle, 
   CheckCircle, 
   Save, 
-  Anchor, 
-  Database 
+  Anchor
 } from "lucide-react";
 import axios from "axios";
 import FraudDetectionDashboard from "./FraudDetectionDashboard";
@@ -28,22 +27,24 @@ const UserDashboard = () => {
 
   // Initialize and validate localStorage for blockchain transactions
   useEffect(() => {
-    console.log("Initializing blockchain transaction storage");
+    console.log("Initializing transaction storage");
     
     // For debugging, uncomment this line to reset localStorage
     // localStorage.removeItem('blockchainTransactions');
+    // localStorage.removeItem('dbTransactions');
     
     // Initialize blockchain transactions storage if needed
     try {
-      const stored = localStorage.getItem('blockchainTransactions');
-      if (!stored) {
+      // Check and initialize blockchain transactions
+      const storedBlockchain = localStorage.getItem('blockchainTransactions');
+      if (!storedBlockchain) {
         // No data found, initialize empty array
         localStorage.setItem('blockchainTransactions', JSON.stringify([]));
         console.log("Initialized empty blockchain transactions array");
       } else {
         // Validate existing data
         try {
-          const parsed = JSON.parse(stored);
+          const parsed = JSON.parse(storedBlockchain);
           if (!Array.isArray(parsed)) {
             console.error("Blockchain transactions is not an array, resetting");
             localStorage.setItem('blockchainTransactions', JSON.stringify([]));
@@ -51,8 +52,30 @@ const UserDashboard = () => {
             console.log(`Found ${parsed.length} existing blockchain transactions`);
           }
         } catch (e) {
-          console.error("Invalid JSON in localStorage, resetting", e);
+          console.error("Invalid JSON in localStorage for blockchain, resetting", e);
           localStorage.setItem('blockchainTransactions', JSON.stringify([]));
+        }
+      }
+      
+      // Check and initialize DB transactions
+      const storedDB = localStorage.getItem('dbTransactions');
+      if (!storedDB) {
+        // No data found, initialize empty array
+        localStorage.setItem('dbTransactions', JSON.stringify([]));
+        console.log("Initialized empty DB transactions array");
+      } else {
+        // Validate existing data
+        try {
+          const parsed = JSON.parse(storedDB);
+          if (!Array.isArray(parsed)) {
+            console.error("DB transactions is not an array, resetting");
+            localStorage.setItem('dbTransactions', JSON.stringify([]));
+          } else {
+            console.log(`Found ${parsed.length} existing DB transactions`);
+          }
+        } catch (e) {
+          console.error("Invalid JSON in localStorage for DB, resetting", e);
+          localStorage.setItem('dbTransactions', JSON.stringify([]));
         }
       }
     } catch (e) {
@@ -149,7 +172,39 @@ const UserDashboard = () => {
     setSaveStatus({ loading: true, error: null, success: false });
     
     try {
-      // Mock a successful DB save
+      // Create transaction data object
+      const transaction = {
+        supabaseUserId: user.id || "user123",
+        amount: parseFloat(amount),
+        recipientAddress,
+        riskLevel: prediction.riskLevel,
+        confidence: prediction.confidence,
+        transactionCategory: prediction.transactionCategory || "Transfer",
+        timestamp: new Date().toISOString(),
+        status: "Saved"
+      };
+      
+      console.log("Saving transaction to DB:", transaction);
+      
+      // Get existing DB transactions from localStorage
+      let transactions = [];
+      try {
+        const stored = localStorage.getItem('dbTransactions');
+        if (stored) {
+          const parsed = JSON.parse(stored);
+          if (Array.isArray(parsed)) {
+            transactions = parsed;
+          }
+        }
+      } catch (e) {
+        console.error("Error parsing stored transactions:", e);
+      }
+      
+      // Add new transaction and save
+      transactions.push(transaction);
+      localStorage.setItem('dbTransactions', JSON.stringify(transactions));
+      
+      // Mock a successful DB save delay
       await new Promise(resolve => setTimeout(resolve, 800));
       
       // Success
@@ -364,11 +419,6 @@ const UserDashboard = () => {
               <Link to="/blockchain-history" className="flex items-center p-3 hover:bg-[#0f172a] rounded-md">
                 <Anchor className="h-5 w-5 mr-3 text-blue-400" />
                 <span>Blockchain Transaction Log</span>
-              </Link>
-              
-              <Link to="/universal-log" className="flex items-center p-3 hover:bg-[#0f172a] rounded-md">
-                <Database className="h-5 w-5 mr-3 text-blue-400" />
-                <span>Universal Transaction Log</span>
               </Link>
             </div>
           </div>
