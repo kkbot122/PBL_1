@@ -148,17 +148,15 @@ const UserDashboard = () => {
   };
 
   return (
-    <div className="min-h-screen bg-black text-white">
+    <div className="min-h-screen bg-[#0f172a] text-white">
       {/* Top Navigation */}
-      <nav className="bg-gray-900 p-4 flex justify-between items-center">
+      <nav className="bg-[#0f172a] p-4 flex justify-between items-center border-b border-gray-800">
         <div className="flex items-center space-x-2">
           <Shield className="h-6 w-6 text-red-500" />
           <span className="text-white text-xl font-semibold">SecureFlow</span>
         </div>
         <div className="flex items-center space-x-4">
-          <Link to="/settings" className="text-white hover:text-gray-300">
-            <Settings className="h-5 w-5" />
-          </Link>
+          <Settings className="h-5 w-5 text-white" />
           <button onClick={handleLogout} className="text-red-500 hover:text-red-400">
             <LogOut className="h-5 w-5" />
           </button>
@@ -166,10 +164,10 @@ const UserDashboard = () => {
       </nav>
 
       {/* Main Content */}
-      <div className="p-6 flex gap-6">
+      <div className="p-6 flex flex-col md:flex-row gap-6">
         {/* Left Column - Fraud Detection Form */}
         <div className="flex-1">
-          <div className="bg-gray-900 rounded-lg p-6">
+          <div className="bg-[#1e293b] rounded-lg p-6">
             <h2 className="text-xl font-bold mb-6">Transaction Fraud Detection</h2>
             
             <div className="mb-4">
@@ -179,7 +177,7 @@ const UserDashboard = () => {
                 value={amount}
                 onChange={(e) => setAmount(e.target.value)}
                 placeholder="Enter amount"
-                className="w-full bg-gray-800 text-white p-3 rounded-md"
+                className="w-full bg-[#0f172a] text-white p-3 rounded-md"
               />
             </div>
             
@@ -190,23 +188,88 @@ const UserDashboard = () => {
                 value={recipientAddress}
                 onChange={(e) => setRecipientAddress(e.target.value)}
                 placeholder="Enter recipient address"
-                className="w-full bg-gray-800 text-white p-3 rounded-md"
+                className="w-full bg-[#0f172a] text-white p-3 rounded-md"
               />
             </div>
             
             <button 
               onClick={handlePrediction}
-              className="w-full bg-red-500 hover:bg-red-600 text-white py-3 rounded-md transition-colors"
+              disabled={loading || !amount || !recipientAddress}
+              className="w-full bg-red-500 hover:bg-red-600 text-white py-3 rounded-md transition-colors disabled:opacity-50"
             >
-              Detect Fraud Risk
+              {loading ? 'Analyzing...' : 'Detect Fraud Risk'}
             </button>
+
+            {error && (
+              <div className="mt-4 bg-red-900/50 border border-red-500 p-4 rounded-lg flex items-start space-x-2">
+                <AlertTriangle className="h-5 w-5 text-red-500 flex-shrink-0 mt-0.5" />
+                <p className="text-red-200">{error}</p>
+              </div>
+            )}
+
+            {prediction && (
+              <div className="mt-6">
+                <FraudDetectionDashboard prediction={prediction} />
+              </div>
+            )}
+
+            {prediction && !prediction.savedToBlockchain && !saveStatus.success && (
+              <div className="mt-6">
+                <button 
+                  onClick={handleSaveTransaction}
+                  disabled={saveStatus.loading || !user}
+                  className="w-full flex items-center justify-center space-x-2 bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-md transition-colors disabled:opacity-50 mb-3"
+                >
+                  <Save className="h-5 w-5" />
+                  <span>{saveStatus.loading ? 'Saving...' : 'Save Transaction to DB History'}</span>
+                </button>
+                {saveStatus.error && (
+                  <p className="text-red-400 text-sm mt-2 text-center">Error: {saveStatus.error}</p>
+                )}
+              </div>
+            )}
+            
+            {saveStatus.success && (
+              <div className="mt-6 mb-3 bg-green-900/50 border border-green-500 p-4 rounded-lg flex items-center justify-center space-x-2">
+                <CheckCircle className="h-5 w-5 text-green-500" />
+                <p className="text-green-200">Transaction saved to DB successfully!</p>
+              </div>
+            )}
+
+            {prediction && !prediction.savedToBlockchain && !blockchainStatus.success && (
+              <div className="mt-2">
+                <button 
+                  onClick={handleLogToBlockchain}
+                  disabled={blockchainStatus.loading || !user || !prediction}
+                  className="w-full flex items-center justify-center space-x-2 bg-purple-600 hover:bg-purple-700 text-white py-3 rounded-md transition-colors disabled:opacity-50"
+                >
+                  <Anchor className="h-5 w-5" />
+                  <span>{blockchainStatus.loading ? 'Logging to Blockchain...' : 'Log Transaction On-Chain'}</span>
+                </button>
+                {blockchainStatus.error && (
+                  <p className="text-red-400 text-sm mt-2 text-center">Error: {blockchainStatus.error}</p>
+                )}
+              </div>
+            )}
+            
+            {blockchainStatus.success && (
+              <div className="mt-2 bg-green-900/50 border border-green-500 p-4 rounded-lg flex items-center justify-center space-x-2">
+                <CheckCircle className="h-5 w-5 text-green-500" />
+                <div>
+                  <p className="text-green-200">Transaction logged on blockchain!</p>
+                  {blockchainStatus.txHash && (
+                    <p className="text-xs text-gray-400 mt-1">Tx Hash: <span className="font-mono break-all">{blockchainStatus.txHash}</span></p>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
         </div>
 
         {/* Right Column - User Info & Quick Actions */}
-        <div className="w-96 space-y-6">
+        <div className="w-full md:w-96 space-y-6">
           {/* User Profile Card */}
-          <div className="bg-gray-900 rounded-lg p-6 text-center">
+          <div className="bg-[#1e293b] rounded-lg p-6 text-center">
             <div className="w-24 h-24 bg-red-500 rounded-full flex items-center justify-center text-3xl font-bold mx-auto mb-4">
               {user?.email?.[0]?.toUpperCase() || 'U'}
             </div>
@@ -215,20 +278,20 @@ const UserDashboard = () => {
           </div>
 
           {/* Quick Actions */}
-          <div className="bg-gray-900 rounded-lg p-6">
+          <div className="bg-[#1e293b] rounded-lg p-6">
             <h2 className="text-xl font-bold mb-4">Quick Actions</h2>
             <div className="space-y-3">
-              <Link to="/transaction-history" className="flex items-center p-3 hover:bg-gray-800 rounded-md">
+              <Link to="/transaction-history" className="flex items-center p-3 hover:bg-[#0f172a] rounded-md">
                 <History className="h-5 w-5 mr-3 text-blue-400" />
                 <span>DB Transaction History</span>
               </Link>
               
-              <Link to="/blockchain-history" className="flex items-center p-3 hover:bg-gray-800 rounded-md">
+              <Link to="/blockchain-history" className="flex items-center p-3 hover:bg-[#0f172a] rounded-md">
                 <Anchor className="h-5 w-5 mr-3 text-blue-400" />
                 <span>Blockchain Transaction Log</span>
               </Link>
               
-              <Link to="/universal-log" className="flex items-center p-3 hover:bg-gray-800 rounded-md">
+              <Link to="/universal-log" className="flex items-center p-3 hover:bg-[#0f172a] rounded-md">
                 <Database className="h-5 w-5 mr-3 text-blue-400" />
                 <span>Universal Transaction Log</span>
               </Link>
